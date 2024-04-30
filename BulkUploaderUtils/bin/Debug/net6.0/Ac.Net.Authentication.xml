@@ -1,0 +1,216 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Ac.Net.Authentication</name>
+    </assembly>
+    <members>
+        <member name="M:Ac.Net.Authentication.Models.AuthParameters.#ctor(System.String,System.String,System.String)">
+            <summary>
+            Basic constuctor for implicit
+            </summary>
+            <param name="clientId"></param>
+            <param name="forgeCallback"></param>
+            <param name="scope"></param>
+        </member>
+        <member name="M:Ac.Net.Authentication.Models.AuthParameters.#ctor">
+            <summary>
+            Default Constuctor
+            </summary>
+        </member>
+        <member name="M:Ac.Net.Authentication.Models.AuthParameters.GetPath">
+            <summary>
+            Gets a default path location
+            </summary>
+            <returns></returns>
+        </member>
+        <member name="M:Ac.Net.Authentication.Models.AuthParameters.CopyValues(Ac.Net.Authentication.Models.AuthParameters)">
+            <summary>
+            Copies values
+            </summary>
+            <param name="source"></param>
+        </member>
+        <member name="M:Ac.Net.Authentication.Models.AuthParameters.Read(System.String)">
+            <summary>
+            Reads parameters for authentication to a json file
+            </summary>
+            <param name="path">Path to json file</param>
+            <returns></returns>
+        </member>
+        <member name="M:Ac.Net.Authentication.Models.AuthParameters.ReadEncrypted(System.String)">
+            <summary>
+            Reads parameters for authentication from a json file that has been encrypted
+            </summary>
+            <param name="path">Path to encrypted json file</param>
+            <returns></returns>
+        </member>
+        <member name="M:Ac.Net.Authentication.Models.AuthParameters.Save(System.String)">
+            <summary>
+            Saves parameters for authentication from a json file
+            </summary>
+            <param name="path">Path to json file</param>
+            <returns></returns>
+        </member>
+        <member name="M:Ac.Net.Authentication.Models.AuthParameters.SaveEncrypted(System.String)">
+            <summary>
+            Saves parameters for authentication to a json file that has been encrypted
+            </summary>
+            <param name="path">Path to encrypted json file</param>
+            <returns></returns>
+        </member>
+        <member name="M:Ac.Net.Authentication.Models.PkceAuthParameters.#ctor(System.String,System.String,System.String)">
+            <summary>
+            Basic constuctor for implicit
+            </summary>
+            <param name="clientId"></param>
+            <param name="forgeCallback"></param>
+            <param name="scope"></param>
+        </member>
+        <member name="M:Ac.Net.Authentication.Models.PkceAuthParameters.#ctor">
+            <summary>
+            Default Constuctor
+            </summary>
+        </member>
+        <member name="M:Ac.Net.Authentication.Models.PkceAuthParameters.GetPath">
+            <summary>
+            Gets a default path location
+            </summary>
+            <returns></returns>
+        </member>
+        <member name="M:Ac.Net.Authentication.Models.PkceAuthParameters.CopyValues(Ac.Net.Authentication.Models.PkceAuthParameters)">
+            <summary>
+            Copies values
+            </summary>
+            <param name="source"></param>
+        </member>
+        <member name="M:Ac.Net.Authentication.Models.PkceAuthParameters.Read(System.String)">
+            <summary>
+            Reads parameters for authentication to a json file
+            </summary>
+            <param name="path">Path to json file</param>
+            <returns></returns>
+        </member>
+        <member name="M:Ac.Net.Authentication.Models.PkceAuthParameters.ReadEncrypted(System.String)">
+            <summary>
+            Reads parameters for authentication from a json file that has been encrypted
+            </summary>
+            <param name="path">Path to encrypted json file</param>
+            <returns></returns>
+        </member>
+        <member name="M:Ac.Net.Authentication.Models.PkceAuthParameters.Save(System.String)">
+            <summary>
+            Saves parameters for authentication from a json file
+            </summary>
+            <param name="path">Path to json file</param>
+            <returns></returns>
+        </member>
+        <member name="M:Ac.Net.Authentication.Models.PkceAuthParameters.SaveEncrypted(System.String)">
+            <summary>
+            Saves parameters for authentication to a json file that has been encrypted
+            </summary>
+            <param name="path">Path to encrypted json file</param>
+            <returns></returns>
+        </member>
+        <member name="T:Ac.Net.Authentication.Models.TokenUpdate">
+            <summary>
+            Deleglte for when a token is refreshed
+            </summary>
+            <param name="manager"></param>
+            <param name="newToken"></param>
+        </member>
+        <member name="T:Ac.Net.Authentication.Models.ITokenManager">
+             <summary>
+            
+             </summary>
+        </member>
+        <member name="T:Ac.Net.Authentication.ThreeLeggedMananger">
+             <summary>
+             Used to get tokens and authenticate using three legged authentication.
+            
+             This should be thread safe.
+             </summary>
+        </member>
+        <member name="P:Ac.Net.Authentication.ThreeLeggedMananger.Fetching">
+            <summary>
+            Creates an instance of a ThreeLegged Token manager
+            </summary>
+            <param name="tokenParameters">Parameters that define the authentication</param>
+        </member>
+        <member name="M:Ac.Net.Authentication.ThreeLeggedMananger.GetClientId">
+             <summary>
+            
+             </summary>
+             <returns></returns>
+        </member>
+        <member name="M:Ac.Net.Authentication.ThreeLeggedMananger.GetExpiration">
+            <summary>
+            Returns the expiration date of token
+            </summary>
+            <returns></returns>
+        </member>
+        <member name="M:Ac.Net.Authentication.ThreeLeggedMananger.GetToken">
+            <summary>
+            Requests a token.  If token is not valid it will try to refresh token if refresh fails it will try to authenticate
+            </summary>
+            <returns></returns>
+            <exception cref="T:System.Exception"></exception>
+        </member>
+        <member name="T:Ac.Net.Authentication.ThreeLeggedPkceMananger">
+             <summary>
+             Used to get tokens and authenticate using three legged authentication.
+            
+             This should be thread safe.
+             </summary>
+        </member>
+        <member name="P:Ac.Net.Authentication.ThreeLeggedPkceMananger.Fetching">
+            <summary>
+            Creates an instance of a ThreeLegged Token manager
+            </summary>
+            <param name="tokenParameters">Parameters that define the authentication</param>
+        </member>
+        <member name="M:Ac.Net.Authentication.ThreeLeggedPkceMananger.GetClientId">
+            <summary>
+            
+            </summary>
+            <returns></returns>
+        </member>
+        <member name="M:Ac.Net.Authentication.ThreeLeggedPkceMananger.GetExpiration">
+            <summary>
+            Returns the expiration date of token
+            </summary>
+            <returns></returns>
+        </member>
+        <member name="M:Ac.Net.Authentication.ThreeLeggedPkceMananger.GetToken">
+            <summary>
+            Requests a token.  If token is not valid it will try to refresh token if refresh fails it will try to authenticate
+            </summary>
+            <returns></returns>
+            <exception cref="T:System.Exception"></exception>
+        </member>
+        <member name="T:Ac.Net.Authentication.TwoLeggedManager">
+             <summary>
+             Used to get tokens and authenticate using three legged authentication.
+            
+             This should be thread safe.
+             </summary>
+        </member>
+        <member name="M:Ac.Net.Authentication.TwoLeggedManager.GetClientId">
+             <summary>
+            
+             </summary>
+             <returns></returns>
+        </member>
+        <member name="M:Ac.Net.Authentication.TwoLeggedManager.GetExpiration">
+            <summary>
+            Returns the expiration date of token
+            </summary>
+            <returns></returns>
+        </member>
+        <member name="M:Ac.Net.Authentication.TwoLeggedManager.GetToken">
+            <summary>
+            Requests a token.  If token is not valid it will try to refresh token if refresh fails it will try to authenticate
+            </summary>
+            <returns></returns>
+            <exception cref="T:System.Exception"></exception>
+        </member>
+    </members>
+</doc>
