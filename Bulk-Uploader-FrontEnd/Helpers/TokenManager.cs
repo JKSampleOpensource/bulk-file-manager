@@ -1,13 +1,6 @@
-﻿using ApsSettings.Data;
-using Autodesk.Forge;
-using Autodesk.Forge.Client;
-using Bulk_Uploader_Electron.Models;
-using Flurl;
-using mass_upload_via_s3_csharp;
-using Serilog;
-using System.Runtime.InteropServices;
-using Autodesk.Forge.Api;
-using Bulk_Uploader_Electron;
+﻿using Autodesk.Authentication;
+using Autodesk.Authentication.Model;
+using Autodesk.SDKManager;
 
 namespace Bulk_Uploader_Electron.Managers
 {
@@ -15,67 +8,59 @@ namespace Bulk_Uploader_Electron.Managers
     {
         private static string TwoLeggedToken { get; set; } = "";
         private static DateTime TwoLeggedTokenExpiration { get; set; }
-        private static readonly TwoLeggedApiV2 TwoLeggedApi = new TwoLeggedApiV2();
-        private static string clientId { get; set; }
-        private static string clientSecret { get; set; }
-        
+        private static string? ClientId { get; set; }
+        private static string? ClientSecret { get; set; }
+
         public static async Task<string> GetTwoLeggedToken()
         {
-            if (clientId != AppSettings.Instance.ClientId || clientSecret != AppSettings.Instance.ClientSecret)
+            if (ClientId != AppSettings.Instance.ClientId || ClientSecret != AppSettings.Instance.ClientSecret)
             {
-                clientId = AppSettings.Instance.ClientId;
-                clientSecret = AppSettings.Instance.ClientSecret;
+                ClientId = AppSettings.Instance.ClientId;
+                ClientSecret = AppSettings.Instance.ClientSecret;
                 return await RequestTwoLeggedToken();
-
             }
 
             if (!string.IsNullOrEmpty(TwoLeggedToken) && TwoLeggedTokenExpiration > (DateTime.UtcNow.AddMinutes(15)))
-            {
                 return TwoLeggedToken;
-            }
             else
-            {
                 return await RequestTwoLeggedToken();
-            }
         }
 
         private static async Task<string> RequestTwoLeggedToken()
-        {
-                ApiResponse<dynamic> bearer = TwoLeggedApi.AuthenticateWithHttpInfo (AppSettings.Instance.ClientId, 
-                    AppSettings.Instance.ClientSecret, oAuthConstants.CLIENT_CREDENTIALS, 
-                    ScopeStringToArray(AppSettings.Instance.ForgeTwoLegScope)) ;
-            if ( bearer.StatusCode != 200 )
-                throw new Exception ("Request failed! (with HTTP response " + bearer.StatusCode + ")") ;
+        { 
+            SDKManager sdkManager = SdkManagerBuilder.Create().Build();
+            var _authClient = new AuthenticationClient(sdkManager);
+            var twoLeggedToken = await _authClient.GetTwoLeggedTokenAsync(AppSettings.Instance.ClientId, AppSettings.Instance.ClientSecret, ScopeStringToArray(AppSettings.Instance.ForgeTwoLegScope));
 
-            TwoLeggedToken = bearer.Data.access_token;
-            TwoLeggedTokenExpiration = DateTime.UtcNow.AddSeconds(bearer.Data.expires_in);
+            TwoLeggedToken = twoLeggedToken.AccessToken;
+            TwoLeggedTokenExpiration = DateTime.UtcNow.AddSeconds(twoLeggedToken.ExpiresIn ?? 60);
 
-            return TwoLeggedToken; 
+            return TwoLeggedToken;
         }
-        
-        public static Scope[] ScopeStringToArray(string scopeString)
+
+        public static List<Scopes> ScopeStringToArray(string scopeString)
         {
             var scopeStrings = scopeString.Split(' ').ToList();
-            var scopes = new List<Scope>();
+            var scopes = new List<Scopes>();
 
-            if (scopeStrings.Contains("data:read")) scopes.Add(Scope.DataRead);
-            if (scopeStrings.Contains("data:write")) scopes.Add(Scope.DataWrite);
-            if (scopeStrings.Contains("data:create")) scopes.Add(Scope.DataCreate);
-            if (scopeStrings.Contains("data:search")) scopes.Add(Scope.DataSearch);
-            
-            if (scopeStrings.Contains("account:read")) scopes.Add(Scope.AccountRead);
-            if (scopeStrings.Contains("account:write")) scopes.Add(Scope.AccountWrite);
-            
-            if (scopeStrings.Contains("user:profileRead")) scopes.Add(Scope.UserProfileRead);
-            
-            if (scopeStrings.Contains("bucket:read")) scopes.Add(Scope.BucketRead);
-            if (scopeStrings.Contains("bucket:update")) scopes.Add(Scope.BucketUpdate);
-            if (scopeStrings.Contains("bucket:create")) scopes.Add(Scope.BucketCreate);
-            if (scopeStrings.Contains("bucket:delete")) scopes.Add(Scope.BucketDelete);
-            
-            if (scopeStrings.Contains("code:all")) scopes.Add(Scope.CodeAll);
-            
-            return scopes.ToArray();
+            if (scopeStrings.Contains("data:read")) scopes.Add(Scopes.DataRead);
+            if (scopeStrings.Contains("data:write")) scopes.Add(Scopes.DataWrite);
+            if (scopeStrings.Contains("data:create")) scopes.Add(Scopes.DataCreate);
+            if (scopeStrings.Contains("data:search")) scopes.Add(Scopes.DataSearch);
+
+            if (scopeStrings.Contains("account:read")) scopes.Add(Scopes.AccountRead);
+            if (scopeStrings.Contains("account:write")) scopes.Add(Scopes.AccountWrite);
+
+            if (scopeStrings.Contains("user:profileRead")) scopes.Add(Scopes.UserProfileRead);
+
+            if (scopeStrings.Contains("bucket:read")) scopes.Add(Scopes.BucketRead);
+            if (scopeStrings.Contains("bucket:update")) scopes.Add(Scopes.BucketUpdate);
+            if (scopeStrings.Contains("bucket:create")) scopes.Add(Scopes.BucketCreate);
+            if (scopeStrings.Contains("bucket:delete")) scopes.Add(Scopes.BucketDelete);
+
+            if (scopeStrings.Contains("code:all")) scopes.Add(Scopes.CodeAll);
+
+            return scopes;
         }
     }
 }
