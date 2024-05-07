@@ -48,7 +48,7 @@ public class DownloaderHangfireJobs
         {
             job.AddLogs("APS Folder Id Was Provided.");
             await _dataContext.SaveChangesAsync();
-            var folder = await UtilityFlows.GetRootFolder(job.HubId, job.ProjectId, job.ApsFolderId);
+            var folder = await ForgeHelpers.GetRootFolder(job.HubId, job.ProjectId, job.ApsFolderId);
             await UtilityFlows.RecurseProject(folder, folder.Name, job.ProjectId, job.Id, job.LocalPath);
         }
     }

@@ -22,30 +22,6 @@ namespace Bulk_Uploader_Electron.Flows
 {
     public class UtilityFlows
     {
-
-        public static async Task<SimpleFolder> GetRootFolder(string hubId, string projectId, string apsFolderUrn)
-        {
-            var uri = AppSettings.GetUriPath(AppSettings.Instance.ProjectsEndpoint) + $"/{projectId}/folders/{apsFolderUrn}";
-
-            var token = await JointTokenManager.GetToken();
-            var project = await ForgeHelpers.GetProject(token, hubId, projectId);
-
-            var folder = new SimpleFolder();
-            token = await JointTokenManager.GetToken();
-            var contentsResponse = await uri
-                .WithOAuthBearerToken(token)
-                .GetJsonAsync();
-
-            if (contentsResponse.data != null)
-            {
-                folder.Name = contentsResponse.data.attributes.name;
-                folder.ParentPath = contentsResponse.data.attributes.displayName;
-                folder.FolderId = apsFolderUrn;
-                folder.Path = $"{project.data.attributes.name}/{folder.Name}";
-            }
-
-            return folder;
-        }
         public static async Task SaveAsExcel(dynamic content, string outputPath, string sheetName)
         {
             if (!string.IsNullOrWhiteSpace(outputPath))
@@ -61,6 +37,7 @@ namespace Bulk_Uploader_Electron.Flows
                 }
             }
         }
+
         public static async Task<List<Account>> GetHubs(string? filePath)
         {
             var results = new List<Account>();
@@ -104,6 +81,7 @@ namespace Bulk_Uploader_Electron.Flows
                 throw;
             }
         }
+
         public static async Task<List<Project>> GetProjects(string hubId, string? filePath)
         {
             var results = new List<Project>();
@@ -194,8 +172,6 @@ namespace Bulk_Uploader_Electron.Flows
 
             await RecurseProject(projectFileFolder, projectFileFolder.Name, projectId, jobId, downloadPath);
         }
-
-
 
         public static async Task<(List<SimpleFolder>, List<SimpleFile>)> RecurseProject(SimpleFolder rootFolder, string rootFolderPath, string projectId)
         {
@@ -292,6 +268,9 @@ namespace Bulk_Uploader_Electron.Flows
                 await RecurseProject(folder, folder.Path, projectId, jobId, downloadPath);
             }
         }
+
+
+
         #region OldCode
         // public static async Task<(List<SimpleFolder>, List<SimpleFile>)> GetFolderContent(
         //     ITokenManager tokenManager,

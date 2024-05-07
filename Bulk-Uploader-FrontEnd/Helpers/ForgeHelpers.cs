@@ -28,36 +28,31 @@ using mass_upload_via_s3_csharp;
 using System.Linq;
 using Microsoft.Extensions.Configuration;
 using FolderItemIncluded = Bulk_Uploader_Electron.Models.Forge.FolderContents.FolderItemIncluded;
-//using Autodesk.Forge.Model;
 using Ac.Net.Authentication.Models;
 using static System.Net.WebRequestMethods;
 using Bulk_Uploader_Electron.Models.Forge.Project;
 using Org.BouncyCastle.Asn1.Ocsp;
+using Bulk_Uploader_Electron.Helpers;
 
 namespace Bulk_Uploader_Electron.Utilities
 {
     public static class ForgeHelpers
     {
-        public static async Task<List<Account>> GetAccounts(string token = null)
+        public static async Task<List<Account>> GetAccounts(string? token = null)
         {
-            var twoLeggedToken = token ?? await TokenManager.GetTwoLeggedToken();
-
-            var hubResponse = await AppSettings.GetUriPath(AppSettings.Instance.HubsEndpoint)
-                .WithOAuthBearerToken(twoLeggedToken)
-                .GetJsonAsync<ForgeHub>();
-
+            token ??= await TokenManager.GetTwoLeggedToken();
+            var hubs = await APSClientHelper.DataManagement.GetHubsAsync(accessToken: token);
             var accounts = new List<Account>();
-            foreach (var hub in hubResponse.data)
+            foreach (var hub in hubs.Data)
             {
                 accounts.Add(new Account()
                 {
-                    AccountId = hub.id,
+                    AccountId = hub.Id,
                     Enabled = false,
-                    Region = hub.attributes.region,
-                    Name = hub.attributes.name
+                    Region = hub.Attributes.Region,
+                    Name = hub.Attributes.Name
                 });
             }
-
             return accounts;
         }
 
@@ -185,7 +180,6 @@ namespace Bulk_Uploader_Electron.Utilities
                 }
             }
         }
-
         private static bool IsValidTopFolder(string name)
         {
             Guid guidResult;
@@ -201,6 +195,30 @@ namespace Bulk_Uploader_Electron.Utilities
             {
                 return true;
             }
+        }
+
+        public static async Task<SimpleFolder> GetRootFolder(string hubId, string projectId, string apsFolderUrn)
+        {
+            var uri = AppSettings.GetUriPath(AppSettings.Instance.ProjectsEndpoint) + $"/{projectId}/folders/{apsFolderUrn}";
+
+            var token = await JointTokenManager.GetToken();
+            var project = await ForgeHelpers.GetProject(token, hubId, projectId);
+
+            var folder = new SimpleFolder();
+            token = await JointTokenManager.GetToken();
+            var contentsResponse = await uri
+                .WithOAuthBearerToken(token)
+                .GetJsonAsync();
+
+            if (contentsResponse.data != null)
+            {
+                folder.Name = contentsResponse.data.attributes.name;
+                folder.ParentPath = contentsResponse.data.attributes.displayName;
+                folder.FolderId = apsFolderUrn;
+                folder.Path = $"{project.data.attributes.name}/{folder.Name}";
+            }
+
+            return folder;
         }
 
         public static async Task<(List<SimpleFolder>, List<SimpleFile>)> GetFolderContents(string token, string projectId, string folderId, string userId = "", bool folderOnly = false, int? limit = null)

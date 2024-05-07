@@ -1,6 +1,7 @@
 ﻿using Autodesk.Authentication;
 using Autodesk.Authentication.Model;
 using Autodesk.SDKManager;
+using Bulk_Uploader_Electron.Helpers;
 
 namespace Bulk_Uploader_Electron.Managers
 {
@@ -28,9 +29,7 @@ namespace Bulk_Uploader_Electron.Managers
 
         private static async Task<string> RequestTwoLeggedToken()
         { 
-            SDKManager sdkManager = SdkManagerBuilder.Create().Build();
-            var _authClient = new AuthenticationClient(sdkManager);
-            var twoLeggedToken = await _authClient.GetTwoLeggedTokenAsync(AppSettings.Instance.ClientId, AppSettings.Instance.ClientSecret, ScopeStringToArray(AppSettings.Instance.ForgeTwoLegScope));
+            var twoLeggedToken = await APSClientHelper.AuthClient.GetTwoLeggedTokenAsync(AppSettings.Instance.ClientId, AppSettings.Instance.ClientSecret, ScopeStringToArray(AppSettings.Instance.ForgeTwoLegScope));
 
             TwoLeggedToken = twoLeggedToken.AccessToken;
             TwoLeggedTokenExpiration = DateTime.UtcNow.AddSeconds(twoLeggedToken.ExpiresIn ?? 60);

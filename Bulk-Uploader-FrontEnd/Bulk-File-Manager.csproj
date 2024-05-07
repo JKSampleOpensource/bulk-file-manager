@@ -16,6 +16,8 @@
     
     <ItemGroup>
         <PackageReference Include="Autodesk.Authentication" Version="1.0.0" />
+        <PackageReference Include="Autodesk.DataManagement" Version="1.0.0" />
+        <PackageReference Include="Autodesk.Oss" Version="1.0.1" />
         <PackageReference Include="AutodeskPlatformServices.Core" Version="0.1.8" />
         <PackageReference Include="AutoMapper" Version="12.0.1" />
         <PackageReference Include="Bogus" Version="34.0.2" />
