@@ -48,7 +48,7 @@ namespace Bulk_Uploader_Electron.Flows
                 try
                 {
                     var token = await JointTokenManager.GetToken();
-                    results = await ForgeHelpers.GetAccounts(token);
+                    results = await ForgeHelpers.GetHubs(token);
                 }
                 catch (Exception ex)
                 {
@@ -84,19 +84,14 @@ namespace Bulk_Uploader_Electron.Flows
 
         public static async Task<List<Project>> GetProjects(string hubId, string? filePath)
         {
-            var results = new List<Project>();
+            var accountProjects = new List<Project>();
             try
             {
                 var errors = new List<ErrorMessage>();
-
                 try
                 {
                     var token = await JointTokenManager.GetToken();
-
-                    results = await ForgeHelpers.GetProjects(
-                        accountId: hubId,
-                        token: token,
-                        errors: errors);
+                    accountProjects = await ForgeHelpers.GetHubProjects(hubId, token, errors: errors);
                 }
                 catch (Exception ex)
                 {
@@ -106,17 +101,13 @@ namespace Bulk_Uploader_Electron.Flows
                 if (!string.IsNullOrWhiteSpace(filePath))
                 {
                     var outDir = Path.GetDirectoryName(filePath);
-
                     if (!string.IsNullOrWhiteSpace(outDir))
                     {
-                        using (var stream = File.Create(filePath))
-                        {
-                            new ExcelMapper().Save(stream, results, "Projects");
-                        }
+                        using var stream = File.Create(filePath);
+                        new ExcelMapper().Save(stream, accountProjects, "Projects");
                     }
                 }
-
-                return results;
+                return accountProjects;
             }
             catch (Exception ex)
             {
@@ -128,8 +119,8 @@ namespace Bulk_Uploader_Electron.Flows
         public static async Task<(List<SimpleFolder>, List<SimpleFile>)> GetProjectData(string projectId, string hubId)
         {
             var token = await JointTokenManager.GetToken();
-            var project = await ForgeHelpers.GetProject(token, hubId, projectId);
-            var projectName = project?.data?.attributes?.name ?? "";
+            var project = await ForgeHelpers.GetHubProject(token, hubId, projectId);
+            var projectName = project?.Data?.Attributes?.Name ?? "";
             token = await JointTokenManager.GetToken();
             var topFolders = await ForgeHelpers.GetTopFolders(token, hubId, projectId);
             var projectFileFolder = topFolders.Select(x => x.Name.ToUpper()).Contains("PROJECT FILES")
@@ -154,8 +145,8 @@ namespace Bulk_Uploader_Electron.Flows
             var job = await tempContext.BulkDownloads.FindAsync(jobId);
 
             var token = await JointTokenManager.GetToken();
-            var project = await ForgeHelpers.GetProject(token, hubId, projectId);
-            var projectName = project?.data?.attributes?.name ?? "";
+            var project = await ForgeHelpers.GetHubProject(token, hubId, projectId);
+            var projectName = project?.Data?.Attributes?.Name ?? "";
             token = await JointTokenManager.GetToken();
             var topFolders = await ForgeHelpers.GetTopFolders(token, hubId, projectId);
             var projectFileFolder = topFolders.Select(x => x.Name.ToUpper()).Contains("PROJECT FILES")

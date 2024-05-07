@@ -21,7 +21,7 @@ public class DataManagementController : ControllerBase
     public async Task<IActionResult> GetHubs()
     {
         var token = await JointTokenManager.GetToken();
-        var accounts = await ForgeHelpers.GetAccounts(token);
+        var accounts = await ForgeHelpers.GetHubs(token);
         var response = accounts.Select(x => new SimpleDataManagementResponse()
         {
             Id = x.AccountId,
@@ -40,7 +40,7 @@ public class DataManagementController : ControllerBase
     {
        // var token = await TokenManager.GetTwoLeggedToken();
         var token = await JointTokenManager.GetToken();
-        var accountProjects = await ForgeHelpers.GetProjects(hubId, token);
+        var accountProjects = await ForgeHelpers.GetHubProjects(hubId, token);
 
         var response = accountProjects.Select(x => new SimpleDataManagementResponse()
         {

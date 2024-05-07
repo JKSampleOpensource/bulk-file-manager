@@ -23,7 +23,7 @@ using mass_upload_via_s3_csharp.Models.Forge;
 using mass_upload_via_s3_csharp.Models.Forge.ForgeCreateFolder;
 using mass_upload_via_s3_csharp.Models.Forge.ForgeSignedS3Upload;
 using mass_upload_via_s3_csharp.Models.Forge.ForgeStorageCreation;
-using Project = Bulk_Uploader_Electron.Models.Project;
+//using Project = Bulk_Uploader_Electron.Models.Project;
 using mass_upload_via_s3_csharp;
 using System.Linq;
 using Microsoft.Extensions.Configuration;
@@ -33,17 +33,18 @@ using static System.Net.WebRequestMethods;
 using Bulk_Uploader_Electron.Models.Forge.Project;
 using Org.BouncyCastle.Asn1.Ocsp;
 using Bulk_Uploader_Electron.Helpers;
+using APSProject = Autodesk.DataManagement.Model.Project;
 
 namespace Bulk_Uploader_Electron.Utilities
 {
     public static class ForgeHelpers
     {
-        public static async Task<List<Account>> GetAccounts(string? token = null)
+        public static async Task<List<Account>> GetHubs(string? token = null)
         {
             token ??= await TokenManager.GetTwoLeggedToken();
-            var hubs = await APSClientHelper.DataManagement.GetHubsAsync(accessToken: token);
+            var apsHubs = await APSClientHelper.DataManagement.GetHubsAsync(accessToken: token);
             var accounts = new List<Account>();
-            foreach (var hub in hubs.Data)
+            foreach (var hub in apsHubs.Data)
             {
                 accounts.Add(new Account()
                 {
@@ -56,72 +57,91 @@ namespace Bulk_Uploader_Electron.Utilities
             return accounts;
         }
 
-        public static async Task<ForgeProject> GetProject(string token, string hubId, string projectId)
+        public static async Task<List<Project>> GetHubProjects(string hubId, string token, string? userId = null, List<ErrorMessage>? errors = null)
         {
-            try
-            {
-                var project = await (AppSettings.GetUriPath(AppSettings.Instance.HubsEndpoint) + $"/{hubId}/projects/{projectId}")
-                    .WithOAuthBearerToken(token)
-                    .GetJsonAsync<ForgeProject>();
-                return project;
-            }
-            catch (Exception e)
-            {
-                Log.Debug(e.Message);
-                throw;
-            }
-        }
-
-        public static async Task<List<Project>> GetProjects(string accountId, string token, string userId = null, List<ErrorMessage> errors = null)
-        {
-            //accountId = accountId.Substring(0, 2) == "b." ? accountId : "b." + accountId;
             var projects = new List<Project>();
-            var uri = AppSettings.GetUriPath(AppSettings.Instance.HubsEndpoint) + $"/{accountId}/projects?page[limit]=100";
-            var failures = 0;
 
-            while (uri != null)
+            var failures = 0;
+            int limit = 50; // Issue with the new SDK: does not work.
+            int pageNumber = 0; // Issue with the new SDK: does not work.
+            bool hasNextPage = true;
+
+            while (hasNextPage)
             {
                 try
                 {
-                    //  var token = await TokenManager.GetTwoLeggedToken();
-
-                    var projectsResponse = uri
-                        .WithOAuthBearerToken(token);
-
-                    if (!string.IsNullOrWhiteSpace(userId))
-                    {
-                        projectsResponse.WithHeader("x-user-id", userId);
-                    }
-
-                    var projectResponse = await projectsResponse.GetJsonAsync<ForgeProjects>();
-
-                    foreach (var project in projectResponse.data)
+                    var apsProjects = await APSClientHelper.DataManagement.GetHubProjectsAsync(hubId, xUserId: userId, accessToken: token, pageNumber: pageNumber, pageLimit: limit);
+                    foreach (var project in apsProjects.Data)
                     {
                         projects.Add(new Project()
                         {
-                            AccountId = accountId,
-                            ProjectId = project.id,
-                            Name = project.attributes.name,
-                            ProjectType = project.attributes.extension.data.projectType == "ACC" ? ProjectType.ACC : ProjectType.BIM360
+                            AccountId = hubId,
+                            ProjectId = project.Id,
+                            Name = project.Attributes.Name,
+                            ProjectType = project.Attributes.Extension.Data.ProjectType == "ACC" ? ProjectType.ACC : ProjectType.BIM360
                         });
                     }
-
-                    uri = projectResponse.links.next?.href;
+                    hasNextPage = apsProjects.Links.Next != null;
+                    pageNumber++;
                 }
                 catch (Exception exception)
                 {
-                    if (errors != null)
-                    {
-                        errors.Add(new ErrorMessage("Projects", exception.Message, exception.StackTrace ?? ""));
-                    }
+                    errors?.Add(new ErrorMessage("Projects", exception.Message, exception.StackTrace ?? ""));
                     Log.Error(exception.Message);
-                    Log.Error(exception.StackTrace);
+                    Log.Error(exception.StackTrace ?? string.Empty);
                     failures++;
                     if (failures > 5) throw;
                 }
             }
 
+
+            //accountId = accountId.Substring(0, 2) == "b." ? accountId : "b." + accountId;
+            //var uri = AppSettings.GetUriPath(AppSettings.Instance.HubsEndpoint) + $"/{hubId}/projects?page[limit]=100";
+            //while (uri != null)
+            //{
+            //    try
+            //    {
+            //        //  var token = await TokenManager.GetTwoLeggedToken();
+
+            //        var projectsResponse = uri
+            //            .WithOAuthBearerToken(token);
+
+            //        if (!string.IsNullOrWhiteSpace(userId))
+            //        {
+            //            projectsResponse.WithHeader("x-user-id", userId);
+            //        }
+
+            //        var projectResponse = await projectsResponse.GetJsonAsync<ForgeProjects>();
+
+            //        foreach (var project in projectResponse.data)
+            //        {
+            //            projects.Add(new Project()
+            //            {
+            //                AccountId = hubId,
+            //                ProjectId = project.id,
+            //                Name = project.attributes.name,
+            //                ProjectType = project.attributes.extension.data.projectType == "ACC" ? ProjectType.ACC : ProjectType.BIM360
+            //            });
+            //        }
+
+            //        uri = projectResponse.links.next?.href;
+            //    }
+            //    catch (Exception exception)
+            //    {
+            //        errors?.Add(new ErrorMessage("Projects", exception.Message, exception.StackTrace ?? ""));
+            //        Log.Error(exception.Message);
+            //        Log.Error(exception.StackTrace);
+            //        failures++;
+            //        if (failures > 5) throw;
+            //    }
+            //}
+
             return projects;
+        }
+
+        public static async Task<APSProject> GetHubProject(string token, string hubId, string projectId)
+        {
+            return await APSClientHelper.DataManagement.GetProjectAsync(hubId, projectId, accessToken: token);
         }
 
         public static async Task<List<SimpleFolder>> GetTopFolders(string token, string accountId, string projectId)
@@ -202,7 +222,7 @@ namespace Bulk_Uploader_Electron.Utilities
             var uri = AppSettings.GetUriPath(AppSettings.Instance.ProjectsEndpoint) + $"/{projectId}/folders/{apsFolderUrn}";
 
             var token = await JointTokenManager.GetToken();
-            var project = await ForgeHelpers.GetProject(token, hubId, projectId);
+            var project = await ForgeHelpers.GetHubProject(token, hubId, projectId);
 
             var folder = new SimpleFolder();
             token = await JointTokenManager.GetToken();
@@ -215,7 +235,7 @@ namespace Bulk_Uploader_Electron.Utilities
                 folder.Name = contentsResponse.data.attributes.name;
                 folder.ParentPath = contentsResponse.data.attributes.displayName;
                 folder.FolderId = apsFolderUrn;
-                folder.Path = $"{project.data.attributes.name}/{folder.Name}";
+                folder.Path = $"{project.Data.Attributes.Name}/{folder.Name}";
             }
 
             return folder;

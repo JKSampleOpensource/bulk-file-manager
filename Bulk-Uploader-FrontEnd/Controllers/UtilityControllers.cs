@@ -94,11 +94,11 @@ public class UtilityControllers : ControllerBase
     {
         var output = new List<AccountsProjectsMapping>();
         var token = await JointTokenManager.GetToken();
-        var accounts = await ForgeHelpers.GetAccounts(token);
+        var accounts = await ForgeHelpers.GetHubs(token);
         foreach (var account in accounts)
         {
-            var projects = await ForgeHelpers.GetProjects(account.AccountId, token);
-            projects.ForEach(project =>
+            var accountProjects = await ForgeHelpers.GetHubProjects(account.AccountId, token);
+            accountProjects.ForEach(project =>
             {
                 output.Add(new AccountsProjectsMapping()
                 {
