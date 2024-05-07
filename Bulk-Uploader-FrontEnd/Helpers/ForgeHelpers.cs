@@ -32,6 +32,7 @@ using Autodesk.Forge.Model;
 using Ac.Net.Authentication.Models;
 using static System.Net.WebRequestMethods;
 using Bulk_Uploader_Electron.Models.Forge.Project;
+using Org.BouncyCastle.Asn1.Ocsp;
 
 namespace Bulk_Uploader_Electron.Utilities
 {
@@ -59,84 +60,6 @@ namespace Bulk_Uploader_Electron.Utilities
 
             return accounts;
         }
-
-        public static async Task<List<Project>> GetProjectsWithBusinessUnits(string accountId, string region)
-        {
-            var url = region == "US"
-                ? AppSettings.GetUriPath(AppSettings.Instance.APACEndpoint) + $"/{accountId.Substring(2)}/projects"
-                : AppSettings.GetUriPath(AppSettings.Instance.EMEAEndpoint) + $"/{accountId.Substring(2)}/projects";
-
-            var offset = 0;
-            var limit = 100;
-
-            var projects = new List<Project>();
-
-            while (true)
-            {
-                var token = await TokenManager.GetTwoLeggedToken();
-
-                var projectResponse = await $"{url}?offset={offset}&limit={limit}"
-                    .WithOAuthBearerToken(token)
-                    .GetJsonAsync<List<ForgeBim360Project>>();
-
-                projectResponse.ForEach(project =>
-                {
-                    projects.Add(new Project()
-                    {
-                        AccountId = accountId,
-                        BusinessUnitId = project.business_unit_id,
-                        Name = project.name,
-                        ProjectId = $"b.{project.id}"
-                    });
-                });
-
-                if (projectResponse.Count == 0)
-                {
-                    break;
-                }
-                else
-                {
-                    offset += limit;
-                }
-            }
-
-            return projects;
-        }
-
-        public static async Task<ForgeBatchS3Download> GetBatchS3(string bucketKey, List<string> objectIds)
-        {
-            try
-            {
-                var uri =
-                    AppSettings.GetUriPath(AppSettings.Instance.BucketsEndpoint) + $"/{bucketKey}/objects/batchsigneds3download?minutesExpiration=60";
-
-                var token = await TokenManager.GetTwoLeggedToken();
-
-                var filteredObjectIds = objectIds.Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
-
-                if (filteredObjectIds.Count == 0)
-                {
-                    return new ForgeBatchS3Download();
-                }
-
-                var request = await uri
-                    .WithOAuthBearerToken(token)
-                    .PostJsonAsync(new
-                    {
-                        requests = filteredObjectIds
-                            .Select(x => new { objectKey = x.Split("/").Last() })
-                            .ToList()
-                    });
-
-                return await request.GetJsonAsync<ForgeBatchS3Download>();
-            }
-            catch (Exception e)
-            {
-                Log.Debug(e.Message);
-                throw;
-            }
-        }
-
 
         public static async Task<ForgeProject> GetProject(string token, string hubId, string projectId)
         {
@@ -262,6 +185,7 @@ namespace Bulk_Uploader_Electron.Utilities
                 }
             }
         }
+
         private static bool IsValidTopFolder(string name)
         {
             Guid guidResult;
@@ -279,92 +203,7 @@ namespace Bulk_Uploader_Electron.Utilities
             }
         }
 
-        public static async Task<List<SimpleFolder>> GetSubFolders(string token, string projectId, string folderId, string userId = null, int? limit = null)
-        {
-            var (folders, files) = (new List<SimpleFolder>(), new List<SimpleFile>());
-            var uri = AppSettings.GetUriPath(AppSettings.Instance.ProjectsEndpoint) + $"/{projectId}/folders/{folderId}/contents";
-
-            if (limit != null) uri += $"?page[limit]={limit}";
-
-            // var failures = 0;
-
-            while (uri != null)
-            {
-                try
-                {
-                    var request = uri
-                        .WithOAuthBearerToken(token);
-
-                    if (userId != null)
-                    {
-                        request = request.WithHeader("x-user-id", userId);
-                    }
-
-                    var contentsResponse = await request
-                        .GetJsonAsync<ForgeFolderContents>();
-
-                    if (contentsResponse.data != null)
-                    {
-                        foreach (var item in contentsResponse.data)
-                        {
-                            if (item.type == "folders")
-                            {
-                                folders.Add(new SimpleFolder()
-                                {
-                                    FolderId = item.id,
-                                    Name = item.attributes.name,
-                                });
-                            }
-                        }
-                    }
-
-                    uri = contentsResponse.links.next?.href ?? null;
-                }
-                //catch (FlurlHttpException exception)
-                //{
-                //    if (exception.StatusCode == 403)
-                //    {
-                //        Log.Warning($"GetFolderContents returned 403");
-                //        throw;
-                //    }
-                //    //else if (exception.StatusCode == 429)
-                //    //{
-                //    //    failures++;
-                //    //    Log.Warning($"GetFolderContents returned 429: {failures}");
-                //    //    if (failures > 5) throw;
-                //    //    await Task.Delay(15000);
-
-                //    //}
-                //    //else
-                //    //{
-                //    //    Log.Error(exception.Message);
-                //    //    Log.Error(exception.StackTrace);
-                //    //    failures++;
-
-                //    //    if (failures > 5) throw;
-                //    //}
-                //}
-                catch (Exception exception)
-                {
-                    Log.Error(exception.Message);
-                    Log.Error(exception.StackTrace);
-                    //failures++;
-
-                    //if (failures > 5) throw;
-                    throw;
-                }
-            }
-
-            return folders;
-        }
-
-        public static async Task<(List<SimpleFolder>, List<SimpleFile>)> GetFolderContents(
-            string token,
-            string projectId,
-            string folderId,
-            string userId = "",
-            bool folderOnly = false,
-            int? limit = null)
+        public static async Task<(List<SimpleFolder>, List<SimpleFile>)> GetFolderContents(string token, string projectId, string folderId, string userId = "", bool folderOnly = false, int? limit = null)
         {
 
             // projectId = projectId.Substring(0, 2) == "b." ? projectId : "b." + projectId;
@@ -466,81 +305,6 @@ namespace Bulk_Uploader_Electron.Utilities
             return (folders, files);
         }
 
-        public static async Task<List<SimpleHook>> CreateDataWebhooks(string folderId, string region, string twoLeggedToken, string callbackUrl)
-        {
-            var hookResponse = await AppSettings.GetUriPath(AppSettings.Instance.WebhooksDataEndpoint)
-                .WithOAuthBearerToken(twoLeggedToken)
-                //.WithHeader("Authorization", "Bearer " + twoLeggedToken)
-                //.WithHeader("Content-Type", "application/json")
-                .WithHeader("x-ads-region", region)
-                .AllowHttpStatus(HttpStatusCode.Conflict)
-                .PostJsonAsync(new
-                {
-                    callbackUrl = callbackUrl,
-                    scope = new
-                    {
-                        folder = folderId
-                    }
-                });
-
-            var hookIds = new List<SimpleHook>();
-
-            if (hookResponse.StatusCode == 409)
-            {
-                hookIds = await GetWebhooks("data", twoLeggedToken);
-                return hookIds;
-            }
-
-            var hookResults = await hookResponse.GetJsonAsync<ForgeWebhookResponse>();
-
-            foreach (var hook in hookResults.hooks)
-            {
-                hookIds.Add(new SimpleHook()
-                {
-                    System = "data",
-                    HookId = hook.hookId,
-                    Event = hook._event
-                });
-            }
-
-            return hookIds;
-        }
-        public static async Task DeleteWebhooks(string system, string webhookEvent, string hookId, string twoLeggedToken)
-        {
-            var hookResponse = await (AppSettings.GetUriPath(AppSettings.Instance.WebhooksEndpoint) + $"/{system}/events/{webhookEvent}/hooks/{hookId}")
-                .WithOAuthBearerToken(twoLeggedToken)
-                .DeleteAsync();
-
-            return;
-        }
-        public static async Task<List<SimpleHook>> GetWebhooks(string system, string twoLeggedToken, string next = "/hooks")
-        {
-            ForgeGetDataHooksResponse pageResults = null;
-            List<SimpleHook> hooks = new List<SimpleHook>();
-            while (pageResults == null || pageResults.links.next != null)
-            {
-                pageResults = await (AppSettings.GetUriPath(AppSettings.Instance.WebhooksEndpoint) + $"/{system}{next}")
-                    .WithOAuthBearerToken(twoLeggedToken)
-                    .GetJsonAsync<ForgeGetDataHooksResponse>();
-
-                foreach (var hook in pageResults.data)
-                {
-                    hooks.Add(new SimpleHook()
-                    {
-                        Event = hook._event,
-                        HookId = hook.hookId,
-                        System = hook.system,
-                        Callback = hook.callbackUrl,
-                        FolderId = hook.tenant
-                    }); ;
-                }
-
-                next = pageResults.links.next;
-            }
-
-            return hooks;
-        }
-
         public static async Task<ForgeVersions> GetVersion(string projectId, string version)
         {
             projectId = projectId.Substring(0, 2) == "b." ? projectId : "b." + projectId;
@@ -563,70 +327,6 @@ namespace Bulk_Uploader_Electron.Utilities
             }
 
             return await request.GetJsonAsync<ForgeVersions>();
-        }
-
-        public static async Task<ForgeMetadata> GetMetadata(string encodedUrn)
-        {
-            var token = await TokenManager.GetTwoLeggedToken();
-
-            var metadataResponse = await (AppSettings.GetUriPath(AppSettings.Instance.ModelformatEndpoint) + $"/{encodedUrn}/metadata")
-
-                .WithOAuthBearerToken(token)
-                .GetJsonAsync<ForgeMetadata>();
-
-            return metadataResponse;
-        }
-
-        public static async Task<ForgeMetadataProperties> GetMetaDataProperties(string encodedUrn, string guid)
-        {
-            var token = await TokenManager.GetTwoLeggedToken();
-
-            //Get the full data set if possible using forceget
-            var propertiesResponse = await (AppSettings.GetUriPath(AppSettings.Instance.ModelformatEndpoint) + $"/{encodedUrn}/metadata/{guid}/properties")
-                .SetQueryParam("forgeget", "true")
-                .WithOAuthBearerToken(token)
-                .AllowHttpStatus(HttpStatusCode.Conflict)
-                .GetJsonAsync<ForgeMetadataProperties>();
-
-            return propertiesResponse;
-        }
-
-        public static async Task<ForgeSupportedFormats> GetSupportedFormats()
-        {
-            var token = await TokenManager.GetTwoLeggedToken();
-
-            //Get the full data set if possible using forceget
-            var response = await (AppSettings.GetUriPath(AppSettings.Instance.ModelformatEndpoint) + $"/formats")
-                .WithOAuthBearerToken(token)
-                .AllowHttpStatus(HttpStatusCode.Conflict)
-                .GetJsonAsync<ForgeSupportedFormats>();
-
-            return response;
-        }
-
-        public static async Task<List<ForgeAttributesBatchGetResult>> GetCustomAttributes(string projectId, List<string> urns)
-        {
-            projectId = projectId.StartsWith("b.") ? projectId.Substring(2) : projectId;
-            var token = await TokenManager.GetTwoLeggedToken();
-
-            var request =
-                await (AppSettings.GetUriPath(AppSettings.Instance.BimProjectEndpoint) + $"/{projectId}/versions:batch-get")
-                    .WithOAuthBearerToken(token)
-                    .AllowHttpStatus(HttpStatusCode.TooManyRequests)
-                    .PostJsonAsync(new
-                    {
-                        urns
-                    });
-
-            if (request.StatusCode == 429)
-            {
-                await Task.Delay(15000);
-                return await GetCustomAttributes(projectId, urns);
-            }
-
-            var response = await request.GetJsonAsync<ForgeAttributesBatchGet>();
-
-            return response.results;
         }
 
         public static async Task<string> GetDownloadUrl(string token, string bucketKey, string objectName, int timeout = 3)
@@ -671,163 +371,12 @@ namespace Bulk_Uploader_Electron.Utilities
             return await response.GetStreamAsync();
         }
 
-        public static async Task<List<ForgeBusinessUnit>> GetBusinessUnits(string accountId, string region, string twoLeggedToken)
-        {
-            var url = region.ToUpper() == "US"
-                ? AppSettings.GetUriPath(AppSettings.Instance.APACEndpoint) + $"/{accountId}/business_units_structure"
-                : AppSettings.GetUriPath(AppSettings.Instance.EMEAEndpoint) + $"/{accountId}/business_units_structure";
-
-            var businessUnitResponse = await url
-                .WithOAuthBearerToken(twoLeggedToken)
-                .GetJsonAsync<ForgeBusinessUnitResponse>();
-
-            if (businessUnitResponse.business_units == null)
-            {
-                return new List<ForgeBusinessUnit>();
-            }
-            else
-            {
-                return businessUnitResponse.business_units;
-            }
-        }
-
-        public static async Task<List<string>> GetProjectManagers(string projectId, string twoLeggedToken)
-        {
-            projectId = projectId.StartsWith("b.") ? projectId.Remove(0, 2) : projectId;
-
-            var url = AppSettings.GetUriPath(AppSettings.Instance.BimProjectEndpoint) + $"/{projectId}/users";
-
-            var response = await url
-                .SetQueryParam("filter[accessLevels]", "projectAdmin")
-                .WithOAuthBearerToken(twoLeggedToken)
-                .GetAsync();
-
-            var projectManagers = await response.GetJsonAsync<ForgeProjectUsers>();
-            return projectManagers.results.Select(x => x.email).ToList();
-        }
-
-
-        public static async Task<ForgeItemTipResponse> GetItemVersion(string projectId, string versionId, string userId)
-        {
-
-            var token = await TokenManager.GetTwoLeggedToken();
-            var request =
-                AppSettings.GetUriPath(AppSettings.Instance.ProjectsEndpoint) + $"/{projectId}/versions/{HttpUtility.UrlEncode(versionId)}"
-                    .WithOAuthBearerToken(token);
-
-            if (userId != null)
-            {
-                request.WithHeader("x-user-id", userId);
-            }
-
-            var versionResponse = await request.GetJsonAsync<ForgeItemTipResponse>();
-
-            return versionResponse;
-        }
-
         public static async Task<Stream> GetDownloadStream(string token, string storageUrn)
         {
             var bucketKey = HttpUtility.UrlEncode("wip.dm.prod");
             var objectName = HttpUtility.UrlEncode(storageUrn.Split('/').Last());
 
             return await DownloadObject(token, bucketKey, objectName);
-        }
-
-        public static async Task<List<(string, bool)>> CheckItemPermissions(string projectId, string userId, List<string> permissions,
-            List<string> itemIds)
-        {
-            var batchSize = 50;
-            var offset = 0;
-            var resolvedPermissions = new List<(string, bool)>();
-            while (offset < itemIds.Count)
-            {
-
-                try
-                {
-
-                    var body = new
-                    {
-                        jsonapi = new { version = "1.0" },
-                        data = new
-                        {
-                            type = "commands",
-                            attributes = new
-                            {
-                                extension = new
-                                {
-                                    type = "commands:autodesk.core:CheckPermission",
-                                    version = "1.0.0",
-                                    data = new
-                                    {
-                                        requiredActions = permissions.ToList()
-                                    }
-                                }
-                            },
-                            relationships = new
-                            {
-                                resources = new
-                                {
-                                    data = itemIds
-                                        .Skip(offset)
-                                        .Take(batchSize)
-                                        .Select(x => new
-                                        {
-                                            type = "versions",
-                                            id = x
-                                        })
-                                        .ToList()
-                                }
-                            }
-                        }
-                    };
-
-                    var token = await TokenManager.GetTwoLeggedToken();
-                    var request =
-                        await (AppSettings.GetUriPath(AppSettings.Instance.ProjectsEndpoint) + $"/{projectId}/commands")
-                            .WithOAuthBearerToken(token)
-                            .WithHeader("x-user-id", userId)
-                            .PostJsonAsync(body);
-
-                    var response = await request
-                        .GetJsonAsync<ForgeCheckPermissionResponse>();
-
-                    var result = response.data.attributes.extension.data.permissions.Select(x => (x.id, x.permission))
-                        .ToList();
-
-                    resolvedPermissions.AddRange(result);
-                }
-                catch (FlurlHttpException e)
-                {
-                    if (e.StatusCode == 403)
-                    {
-                        resolvedPermissions.AddRange(itemIds.Select(x => (x, false)).ToList());
-                    }
-                    else
-                    {
-
-                        throw;
-                    }
-                }
-                catch (Exception e)
-                {
-                    Log.Error(e.Message);
-                    throw;
-                }
-                finally
-                {
-                    offset += batchSize;
-                }
-            }
-
-            return resolvedPermissions;
-        }
-        public static async Task<bool> CheckItemPermissions(string projectId, string userId, List<string> permissions,
-            string itemId)
-        {
-            var itemPermissions = await CheckItemPermissions(projectId, userId, permissions, new List<string>() { itemId });
-
-            Nullable<(string, bool)> result = itemPermissions.FirstOrDefault();
-            return result.HasValue && result.Value.Item2;
         }
 
         public static async Task<ForgeStorageCreation> CreateStorageLocation(string projectId, string fileName, string folderUrn)
@@ -928,35 +477,6 @@ namespace Bulk_Uploader_Electron.Utilities
             return JsonConvert.DeserializeObject(response.Content);
         }
 
-
-        public static async Task<ForgeSignedS3Upload> GetUploadUrls(string bucketKey, string objectKey, int partIndex, int partCount, string uploadKey = null)
-        {
-            try
-            {
-                var token = await TokenManager.GetTwoLeggedToken();
-
-                var request = await (AppSettings.GetUriPath(AppSettings.Instance.BucketsEndpoint) + $"/{bucketKey}/objects/{objectKey}/signeds3upload")
-                    .SetQueryParam("minutesExpiration", "60")
-                    .SetQueryParam("firstPart", partIndex + 1) //1-indexed
-                    .SetQueryParam("parts", partCount)
-                    .WithOAuthBearerToken(token)
-                    .GetJsonAsync<ForgeSignedS3Upload>();
-
-                return request;
-            }
-            catch (FlurlHttpException exception)
-            {
-                var response = await exception.GetResponseJsonAsync();
-                Log.Error(exception.Message);
-                throw;
-            }
-            catch (Exception exception)
-            {
-                Log.Error(exception.Message);
-                throw;
-            }
-        }
-
         public static async Task<dynamic> CompleteUpload(string bucketKey, string objectKey, string uploadKey)
         {
             var token = await TokenManager.GetTwoLeggedToken();
@@ -975,8 +495,7 @@ namespace Bulk_Uploader_Electron.Utilities
             return response;
         }
 
-        public static async Task<ForgeFirstVersionResponse> CreateFirstVersion(string projectId, string fileName, string folderId,
-            string objectId)
+        public static async Task<ForgeFirstVersionResponse> CreateFirstVersion(string projectId, string fileName, string folderId, string objectId)
         {
             try
             {
@@ -1075,8 +594,7 @@ namespace Bulk_Uploader_Electron.Utilities
             }
         }
 
-        public static async Task<ForgeFirstVersionResponse> CreateNextVersion(string projectId, string fileName, string itemId,
-            string objectId)
+        public static async Task<ForgeFirstVersionResponse> CreateNextVersion(string projectId, string fileName, string itemId, string objectId)
         {
             try
             {
@@ -1202,5 +720,469 @@ namespace Bulk_Uploader_Electron.Utilities
                 throw;
             }
         }
+
+
+
+        #region Redundant
+        //public static async Task<List<SimpleFolder>> GetSubFolders(string token, string projectId, string folderId, string userId = null, int? limit = null)
+        //{
+        //    var (folders, files) = (new List<SimpleFolder>(), new List<SimpleFile>());
+        //    var uri = AppSettings.GetUriPath(AppSettings.Instance.ProjectsEndpoint) + $"/{projectId}/folders/{folderId}/contents";
+
+        //    if (limit != null) uri += $"?page[limit]={limit}";
+
+        //    // var failures = 0;
+
+        //    while (uri != null)
+        //    {
+        //        try
+        //        {
+        //            var request = uri
+        //                .WithOAuthBearerToken(token);
+
+        //            if (userId != null)
+        //            {
+        //                request = request.WithHeader("x-user-id", userId);
+        //            }
+
+        //            var contentsResponse = await request
+        //                .GetJsonAsync<ForgeFolderContents>();
+
+        //            if (contentsResponse.data != null)
+        //            {
+        //                foreach (var item in contentsResponse.data)
+        //                {
+        //                    if (item.type == "folders")
+        //                    {
+        //                        folders.Add(new SimpleFolder()
+        //                        {
+        //                            FolderId = item.id,
+        //                            Name = item.attributes.name,
+        //                        });
+        //                    }
+        //                }
+        //            }
+
+        //            uri = contentsResponse.links.next?.href ?? null;
+        //        }
+        //        //catch (FlurlHttpException exception)
+        //        //{
+        //        //    if (exception.StatusCode == 403)
+        //        //    {
+        //        //        Log.Warning($"GetFolderContents returned 403");
+        //        //        throw;
+        //        //    }
+        //        //    //else if (exception.StatusCode == 429)
+        //        //    //{
+        //        //    //    failures++;
+        //        //    //    Log.Warning($"GetFolderContents returned 429: {failures}");
+        //        //    //    if (failures > 5) throw;
+        //        //    //    await Task.Delay(15000);
+
+        //        //    //}
+        //        //    //else
+        //        //    //{
+        //        //    //    Log.Error(exception.Message);
+        //        //    //    Log.Error(exception.StackTrace);
+        //        //    //    failures++;
+
+        //        //    //    if (failures > 5) throw;
+        //        //    //}
+        //        //}
+        //        catch (Exception exception)
+        //        {
+        //            Log.Error(exception.Message);
+        //            Log.Error(exception.StackTrace);
+        //            //failures++;
+
+        //            //if (failures > 5) throw;
+        //            throw;
+        //        }
+        //    }
+
+        //    return folders;
+        //}
+        //public static async Task<ForgeItemTipResponse> GetItemVersion(string projectId, string versionId, string userId)
+        //{
+
+        //    var token = await TokenManager.GetTwoLeggedToken();
+        //    var request =
+        //        AppSettings.GetUriPath(AppSettings.Instance.ProjectsEndpoint) + $"/{projectId}/versions/{HttpUtility.UrlEncode(versionId)}"
+        //            .WithOAuthBearerToken(token);
+
+        //    if (userId != null)
+        //    {
+        //        request.WithHeader("x-user-id", userId);
+        //    }
+
+        //    var versionResponse = await request.GetJsonAsync<ForgeItemTipResponse>();
+
+        //    return versionResponse;
+        //}
+
+        //public static async Task<ForgeMetadata> GetMetadata(string encodedUrn)
+        //{
+        //    var token = await TokenManager.GetTwoLeggedToken();
+
+        //    var metadataResponse = await (AppSettings.GetUriPath(AppSettings.Instance.ModelformatEndpoint) + $"/{encodedUrn}/metadata")
+
+        //        .WithOAuthBearerToken(token)
+        //        .GetJsonAsync<ForgeMetadata>();
+
+        //    return metadataResponse;
+        //}
+        //public static async Task<ForgeMetadataProperties> GetMetaDataProperties(string encodedUrn, string guid)
+        //{
+        //    var token = await TokenManager.GetTwoLeggedToken();
+
+        //    //Get the full data set if possible using forceget
+        //    var propertiesResponse = await (AppSettings.GetUriPath(AppSettings.Instance.ModelformatEndpoint) + $"/{encodedUrn}/metadata/{guid}/properties")
+        //        .SetQueryParam("forgeget", "true")
+        //        .WithOAuthBearerToken(token)
+        //        .AllowHttpStatus(HttpStatusCode.Conflict)
+        //        .GetJsonAsync<ForgeMetadataProperties>();
+
+        //    return propertiesResponse;
+        //}
+        //public static async Task<List<ForgeAttributesBatchGetResult>> GetCustomAttributes(string projectId, List<string> urns)
+        //{
+        //    projectId = projectId.StartsWith("b.") ? projectId.Substring(2) : projectId;
+        //    var token = await TokenManager.GetTwoLeggedToken();
+
+        //    var request =
+        //        await (AppSettings.GetUriPath(AppSettings.Instance.BimProjectEndpoint) + $"/{projectId}/versions:batch-get")
+        //            .WithOAuthBearerToken(token)
+        //            .AllowHttpStatus(HttpStatusCode.TooManyRequests)
+        //            .PostJsonAsync(new
+        //            {
+        //                urns
+        //            });
+
+        //    if (request.StatusCode == 429)
+        //    {
+        //        await Task.Delay(15000);
+        //        return await GetCustomAttributes(projectId, urns);
+        //    }
+
+        //    var response = await request.GetJsonAsync<ForgeAttributesBatchGet>();
+
+        //    return response.results;
+        //}
+
+        //public static async Task<List<Project>> GetProjectsWithBusinessUnits(string accountId, string region)
+        //{
+        //    var url = region == "US"
+        //        ? AppSettings.GetUriPath(AppSettings.Instance.APACEndpoint) + $"/{accountId.Substring(2)}/projects"
+        //        : AppSettings.GetUriPath(AppSettings.Instance.EMEAEndpoint) + $"/{accountId.Substring(2)}/projects";
+
+        //    var offset = 0;
+        //    var limit = 100;
+
+        //    var projects = new List<Project>();
+
+        //    while (true)
+        //    {
+        //        var token = await TokenManager.GetTwoLeggedToken();
+
+        //        var projectResponse = await $"{url}?offset={offset}&limit={limit}"
+        //            .WithOAuthBearerToken(token)
+        //            .GetJsonAsync<List<ForgeBim360Project>>();
+
+        //        projectResponse.ForEach(project =>
+        //        {
+        //            projects.Add(new Project()
+        //            {
+        //                AccountId = accountId,
+        //                BusinessUnitId = project.business_unit_id,
+        //                Name = project.name,
+        //                ProjectId = $"b.{project.id}"
+        //            });
+        //        });
+
+        //        if (projectResponse.Count == 0)
+        //        {
+        //            break;
+        //        }
+        //        else
+        //        {
+        //            offset += limit;
+        //        }
+        //    }
+
+        //    return projects;
+        //}
+        //public static async Task<List<ForgeBusinessUnit>> GetBusinessUnits(string accountId, string region, string twoLeggedToken)
+        //{
+        //    var url = region.ToUpper() == "US"
+        //        ? AppSettings.GetUriPath(AppSettings.Instance.APACEndpoint) + $"/{accountId}/business_units_structure"
+        //        : AppSettings.GetUriPath(AppSettings.Instance.EMEAEndpoint) + $"/{accountId}/business_units_structure";
+
+        //    var businessUnitResponse = await url
+        //        .WithOAuthBearerToken(twoLeggedToken)
+        //        .GetJsonAsync<ForgeBusinessUnitResponse>();
+
+        //    if (businessUnitResponse.business_units == null)
+        //    {
+        //        return new List<ForgeBusinessUnit>();
+        //    }
+        //    else
+        //    {
+        //        return businessUnitResponse.business_units;
+        //    }
+        //}
+        //public static async Task<List<string>> GetProjectManagers(string projectId, string twoLeggedToken)
+        //{
+        //    projectId = projectId.StartsWith("b.") ? projectId.Remove(0, 2) : projectId;
+
+        //    var url = AppSettings.GetUriPath(AppSettings.Instance.BimProjectEndpoint) + $"/{projectId}/users";
+
+        //    var response = await url
+        //        .SetQueryParam("filter[accessLevels]", "projectAdmin")
+        //        .WithOAuthBearerToken(twoLeggedToken)
+        //        .GetAsync();
+
+        //    var projectManagers = await response.GetJsonAsync<ForgeProjectUsers>();
+        //    return projectManagers.results.Select(x => x.email).ToList();
+        //}
+
+        //public static async Task<ForgeSignedS3Upload> GetUploadUrls(string bucketKey, string objectKey, int partIndex, int partCount, string uploadKey = null)
+        //{
+        //    try
+        //    {
+        //        var token = await TokenManager.GetTwoLeggedToken();
+
+        //        var request = await (AppSettings.GetUriPath(AppSettings.Instance.BucketsEndpoint) + $"/{bucketKey}/objects/{objectKey}/signeds3upload")
+        //            .SetQueryParam("minutesExpiration", "60")
+        //            .SetQueryParam("firstPart", partIndex + 1) //1-indexed
+        //            .SetQueryParam("parts", partCount)
+        //            .WithOAuthBearerToken(token)
+        //            .GetJsonAsync<ForgeSignedS3Upload>();
+
+        //        return request;
+        //    }
+        //    catch (FlurlHttpException exception)
+        //    {
+        //        var response = await exception.GetResponseJsonAsync();
+        //        Log.Error(exception.Message);
+        //        throw;
+        //    }
+        //    catch (Exception exception)
+        //    {
+        //        Log.Error(exception.Message);
+        //        throw;
+        //    }
+        //}
+        //public static async Task<ForgeBatchS3Download> GetBatchS3(string bucketKey, List<string> objectIds)
+        //{
+        //    try
+        //    {
+        //        var uri =
+        //            AppSettings.GetUriPath(AppSettings.Instance.BucketsEndpoint) + $"/{bucketKey}/objects/batchsigneds3download?minutesExpiration=60";
+
+        //        var token = await TokenManager.GetTwoLeggedToken();
+
+        //        var filteredObjectIds = objectIds.Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+
+        //        if (filteredObjectIds.Count == 0)
+        //        {
+        //            return new ForgeBatchS3Download();
+        //        }
+
+        //        var request = await uri
+        //            .WithOAuthBearerToken(token)
+        //            .PostJsonAsync(new
+        //            {
+        //                requests = filteredObjectIds
+        //                    .Select(x => new { objectKey = x.Split("/").Last() })
+        //                    .ToList()
+        //            });
+
+        //        return await request.GetJsonAsync<ForgeBatchS3Download>();
+        //    }
+        //    catch (Exception e)
+        //    {
+        //        Log.Debug(e.Message);
+        //        throw;
+        //    }
+        //}
+
+        //public static async Task<ForgeSupportedFormats> GetSupportedFormats()
+        //{
+        //    var token = await TokenManager.GetTwoLeggedToken();
+
+        //    //Get the full data set if possible using forceget
+        //    var response = await (AppSettings.GetUriPath(AppSettings.Instance.ModelformatEndpoint) + $"/formats")
+        //        .WithOAuthBearerToken(token)
+        //        .AllowHttpStatus(HttpStatusCode.Conflict)
+        //        .GetJsonAsync<ForgeSupportedFormats>();
+
+        //    return response;
+        //}
+        //public static async Task<List<(string, bool)>> CheckItemPermissions(string projectId, string userId, List<string> permissions, List<string> itemIds)
+        //{
+        //    var batchSize = 50;
+        //    var offset = 0;
+        //    var resolvedPermissions = new List<(string, bool)>();
+        //    while (offset < itemIds.Count)
+        //    {
+        //        try
+        //        {
+        //            var body = new
+        //            {
+        //                jsonapi = new { version = "1.0" },
+        //                data = new
+        //                {
+        //                    type = "commands",
+        //                    attributes = new
+        //                    {
+        //                        extension = new
+        //                        {
+        //                            type = "commands:autodesk.core:CheckPermission",
+        //                            version = "1.0.0",
+        //                            data = new
+        //                            {
+        //                                requiredActions = permissions.ToList()
+        //                            }
+        //                        }
+        //                    },
+        //                    relationships = new
+        //                    {
+        //                        resources = new
+        //                        {
+        //                            data = itemIds
+        //                                .Skip(offset)
+        //                                .Take(batchSize)
+        //                                .Select(x => new
+        //                                {
+        //                                    type = "versions",
+        //                                    id = x
+        //                                })
+        //                                .ToList()
+        //                        }
+        //                    }
+        //                }
+        //            };
+
+        //            var token = await TokenManager.GetTwoLeggedToken();
+        //            var request =
+        //                await (AppSettings.GetUriPath(AppSettings.Instance.ProjectsEndpoint) + $"/{projectId}/commands")
+        //                    .WithOAuthBearerToken(token)
+        //                    .WithHeader("x-user-id", userId)
+        //                    .PostJsonAsync(body);
+
+        //            var response = await request
+        //                .GetJsonAsync<ForgeCheckPermissionResponse>();
+
+        //            var result = response.data.attributes.extension.data.permissions.Select(x => (x.id, x.permission))
+        //                .ToList();
+
+        //            resolvedPermissions.AddRange(result);
+        //        }
+        //        catch (FlurlHttpException e)
+        //        {
+        //            if (e.StatusCode == 403)
+        //            {
+        //                resolvedPermissions.AddRange(itemIds.Select(x => (x, false)).ToList());
+        //            }
+        //            else
+        //            {
+        //                throw;
+        //            }
+        //        }
+        //        catch (Exception e)
+        //        {
+        //            Log.Error(e.Message);
+        //            throw;
+        //        }
+        //        finally
+        //        {
+        //            offset += batchSize;
+        //        }
+        //    }
+        //    return resolvedPermissions;
+        //}
+        //public static async Task<bool> CheckItemPermissions(string projectId, string userId, List<string> permissions, string itemId)
+        //{
+        //    var itemPermissions = await CheckItemPermissions(projectId, userId, permissions, new List<string>() { itemId });
+        //    Nullable<(string, bool)> result = itemPermissions.FirstOrDefault();
+        //    return result.HasValue && result.Value.Item2;
+        //}
+
+        //public static async Task<List<SimpleHook>> CreateDataWebhooks(string folderId, string region, string twoLeggedToken, string callbackUrl)
+        //{
+        //    var hookResponse = await AppSettings.GetUriPath(AppSettings.Instance.WebhooksDataEndpoint)
+        //        .WithOAuthBearerToken(twoLeggedToken)
+        //        //.WithHeader("Authorization", "Bearer " + twoLeggedToken)
+        //        //.WithHeader("Content-Type", "application/json")
+        //        .WithHeader("x-ads-region", region)
+        //        .AllowHttpStatus(HttpStatusCode.Conflict)
+        //        .PostJsonAsync(new
+        //        {
+        //            callbackUrl = callbackUrl,
+        //            scope = new
+        //            {
+        //                folder = folderId
+        //            }
+        //        });
+
+        //    var hookIds = new List<SimpleHook>();
+
+        //    if (hookResponse.StatusCode == 409)
+        //    {
+        //        hookIds = await GetWebhooks("data", twoLeggedToken);
+        //        return hookIds;
+        //    }
+
+        //    var hookResults = await hookResponse.GetJsonAsync<ForgeWebhookResponse>();
+
+        //    foreach (var hook in hookResults.hooks)
+        //    {
+        //        hookIds.Add(new SimpleHook()
+        //        {
+        //            System = "data",
+        //            HookId = hook.hookId,
+        //            Event = hook._event
+        //        });
+        //    }
+
+        //    return hookIds;
+        //}
+        //public static async Task DeleteWebhooks(string system, string webhookEvent, string hookId, string twoLeggedToken)
+        //{
+        //    var hookResponse = await (AppSettings.GetUriPath(AppSettings.Instance.WebhooksEndpoint) + $"/{system}/events/{webhookEvent}/hooks/{hookId}")
+        //        .WithOAuthBearerToken(twoLeggedToken)
+        //        .DeleteAsync();
+
+        //    return;
+        //}
+        //public static async Task<List<SimpleHook>> GetWebhooks(string system, string twoLeggedToken, string next = "/hooks")
+        //{
+        //    ForgeGetDataHooksResponse pageResults = null;
+        //    List<SimpleHook> hooks = new List<SimpleHook>();
+        //    while (pageResults == null || pageResults.links.next != null)
+        //    {
+        //        pageResults = await (AppSettings.GetUriPath(AppSettings.Instance.WebhooksEndpoint) + $"/{system}{next}")
+        //            .WithOAuthBearerToken(twoLeggedToken)
+        //            .GetJsonAsync<ForgeGetDataHooksResponse>();
+
+        //        foreach (var hook in pageResults.data)
+        //        {
+        //            hooks.Add(new SimpleHook()
+        //            {
+        //                Event = hook._event,
+        //                HookId = hook.hookId,
+        //                System = hook.system,
+        //                Callback = hook.callbackUrl,
+        //                FolderId = hook.tenant
+        //            }); ;
+        //        }
+
+        //        next = pageResults.links.next;
+        //    }
+
+        //    return hooks;
+        //}
+
+        #endregion
     }
 }
