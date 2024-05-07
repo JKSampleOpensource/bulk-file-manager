@@ -41,20 +41,29 @@ namespace Bulk_Uploader_Electron.Utilities
     {
         public static async Task<List<Account>> GetHubs(string? token = null)
         {
-            token ??= await TokenManager.GetTwoLeggedToken();
-            var apsHubs = await APSClientHelper.DataManagement.GetHubsAsync(accessToken: token);
-            var accounts = new List<Account>();
-            foreach (var hub in apsHubs.Data)
+            try
             {
-                accounts.Add(new Account()
+                token ??= await TokenManager.GetTwoLeggedToken();
+                var apsHubs = await APSClientHelper.DataManagement.GetHubsAsync(accessToken: token);
+                var accounts = new List<Account>();
+                foreach (var hub in apsHubs.Data)
                 {
-                    AccountId = hub.Id,
-                    Enabled = false,
-                    Region = hub.Attributes.Region,
-                    Name = hub.Attributes.Name
-                });
+                    accounts.Add(new Account()
+                    {
+                        AccountId = hub.Id,
+                        Enabled = false,
+                        Region = hub.Attributes.Region,
+                        Name = hub.Attributes.Name
+                    });
+                }
+                return accounts;
             }
-            return accounts;
+            catch (Exception exception)
+            {
+                Log.Error(exception.Message);
+                Log.Error(exception.StackTrace ?? string.Empty);
+                throw;
+            }
         }
 
         public static async Task<List<Project>> GetHubProjects(string hubId, string token, string? userId = null, List<ErrorMessage>? errors = null)
@@ -141,72 +150,52 @@ namespace Bulk_Uploader_Electron.Utilities
 
         public static async Task<APSProject> GetHubProject(string token, string hubId, string projectId)
         {
-            return await APSClientHelper.DataManagement.GetProjectAsync(hubId, projectId, accessToken: token);
+            try
+            {
+                return await APSClientHelper.DataManagement.GetProjectAsync(hubId, projectId, accessToken: token);
+            }
+            catch (Exception exception)
+            {
+                Log.Error(exception.Message);
+                Log.Error(exception.StackTrace ?? string.Empty);
+                throw;
+            }
         }
 
-        public static async Task<List<SimpleFolder>> GetTopFolders(string token, string accountId, string projectId)
+        public static async Task<List<SimpleFolder>> GetTopFolders(string token, string hubId, string projectId)
         {
-            //   AppSettings.ProjectId = projectId;
-
-            while (true)
+            try
             {
-                try
+                var apsProjectTopFolders = await APSClientHelper.DataManagement.GetProjectTopFoldersAsync(hubId, projectId, accessToken: token, excludeDeleted: true);
+                var folders = new List<SimpleFolder>();
+                foreach (var folder in apsProjectTopFolders.Data)
                 {
-                    var topFolderResponse =
-                        await (AppSettings.GetUriPath(AppSettings.Instance.HubsEndpoint) + $"/{accountId}/projects/{projectId}/topFolders")
-                                .WithOAuthBearerToken(token)
-                                .GetJsonAsync<ForgeTopFolders>();
-
-                    var folders = new List<SimpleFolder>();
-                    foreach (var folder in topFolderResponse.data)
+                    if (IsValidTopFolder(folder.Attributes.Name))
                     {
-                        //TODO: Filter out folders
-                        if (IsValidTopFolder(folder.attributes.name))
+                        folders.Add(new SimpleFolder()
                         {
-                            folders.Add(new SimpleFolder()
-                            {
-                                FolderId = folder.id,
-                                Name = folder.attributes.name,
-                                Url = folder?.links?.webView?.href ?? "",
-                                IsRoot = false
-                            });
-                        }
+                            FolderId = folder.Id,
+                            Name = folder.Attributes.Name,
+                            Url = folder.Links.WebView.Href,
+                            IsRoot = false
+                        });
                     }
-
-                    return folders;
                 }
-                //catch (FlurlHttpException exception)
-                //{
-                //    if (exception.StatusCode == 403)
-                //    {
-                //        throw;
-                //    }
-                //    else if (exception.StatusCode == 429)
-                //    {
-                //        await Task.Delay(15000);
-                //    }
-                //    else
-                //    {
-                //        Log.Error(exception.Message);
-                //        Log.Error(exception.StackTrace);
-                //        throw;
-                //    }
-                //}
-                catch (Exception exception)
-                {
-                    Log.Error(exception.Message);
-                    Log.Error(exception.StackTrace);
-                    throw;
-                }
+                return folders;
+            }
+            catch (Exception exception)
+            {
+                Log.Error(exception.Message);
+                Log.Error(exception.StackTrace ?? string.Empty);
+                throw;
             }
         }
         private static bool IsValidTopFolder(string name)
         {
-            Guid guidResult;
             if (name.Contains("checklist_") || name.Contains("submittals-attachments") || name.Contains("Photos") ||
                 name.Contains("ProjectTb") || name.Contains("dailylog_") || name.Contains("issue_") ||
                 name.Contains("correspondence-project") || name.Contains("meetings-project") || name.Contains("issues_")
-                || name.Contains("COST Root Folder") || name.Contains("Recycle Bin") || Guid.TryParse(name, out guidResult)
+                || name.Contains("COST Root Folder") || name.Contains("Recycle Bin") || Guid.TryParse(name, out _)
                 || name.Contains("quantification_") || name.Contains("rfis_project_") || name.Contains("assets_"))
             {
                 return false;
@@ -217,126 +206,88 @@ namespace Bulk_Uploader_Electron.Utilities
             }
         }
 
-        public static async Task<SimpleFolder> GetRootFolder(string hubId, string projectId, string apsFolderUrn)
+        public static async Task<SimpleFolder> GetRootFolder(string token, string hubId, string projectId, string apsFolderUrn)
         {
-            var uri = AppSettings.GetUriPath(AppSettings.Instance.ProjectsEndpoint) + $"/{projectId}/folders/{apsFolderUrn}";
-
-            var token = await JointTokenManager.GetToken();
-            var project = await ForgeHelpers.GetHubProject(token, hubId, projectId);
-
-            var folder = new SimpleFolder();
-            token = await JointTokenManager.GetToken();
-            var contentsResponse = await uri
-                .WithOAuthBearerToken(token)
-                .GetJsonAsync();
-
-            if (contentsResponse.data != null)
+            try
             {
-                folder.Name = contentsResponse.data.attributes.name;
-                folder.ParentPath = contentsResponse.data.attributes.displayName;
-                folder.FolderId = apsFolderUrn;
-                folder.Path = $"{project.Data.Attributes.Name}/{folder.Name}";
-            }
+                var apsProject = await APSClientHelper.DataManagement.GetProjectAsync(hubId, projectId, accessToken: token);
+                var apsFolder = await APSClientHelper.DataManagement.GetFolderAsync(hubId, projectId, apsFolderUrn, accessToken: token);
 
-            return folder;
+                return new SimpleFolder
+                {
+                    Name = apsFolder.Data.Attributes.Name,
+                    ParentPath = apsFolder.Data.Attributes.DisplayName,
+                    FolderId = apsFolderUrn,
+                    Path = $"{apsProject.Data.Attributes.Name}/{apsFolder.Data.Attributes.Name}"
+                };
+            }
+            catch (Exception exception)
+            {
+                Log.Error(exception.Message);
+                Log.Error(exception.StackTrace ?? string.Empty);
+                throw;
+            }
         }
 
-        public static async Task<(List<SimpleFolder>, List<SimpleFile>)> GetFolderContents(string token, string projectId, string folderId, string userId = "", bool folderOnly = false, int? limit = null)
+        public static async Task<(List<SimpleFolder>, List<SimpleFile>)> GetFolderContents(string token, string projectId, string folderId)
         {
-
-            // projectId = projectId.Substring(0, 2) == "b." ? projectId : "b." + projectId;
-
             var (folders, files) = (new List<SimpleFolder>(), new List<SimpleFile>());
-            var uri = AppSettings.GetUriPath(AppSettings.Instance.ProjectsEndpoint) + $"/{projectId}/folders/{folderId}/contents";
 
-            if (limit != null) uri += $"?page[limit]={limit}";
+            var failures = 0;
+            var limit = 1; // Issue with the new SDK: does not work.
+            int pageNumber = 0; // Issue with the new SDK: does not work.
+            bool hasNextPage = true;
 
-            //var failures = 0;
-
-            while (uri != null)
+            while (hasNextPage)
             {
                 try
                 {
-                    var request = uri
-                        .WithOAuthBearerToken(token);
-
-                    if (!string.IsNullOrEmpty(userId))
+                    var apsFolderContent = await APSClientHelper.DataManagement.GetFolderContentsAsync(projectId, folderId, accessToken: token, pageLimit: limit, pageNumber: pageNumber);
+                    foreach (var item in apsFolderContent.Data)
                     {
-                        request = request.WithHeader("x-user-id", userId);
-                    }
-
-                    var contentsResponse = await request
-                        .GetJsonAsync<ForgeFolderContents>();
-
-                    if (contentsResponse.data != null)
-                    {
-                        foreach (var item in contentsResponse.data)
+                        if (item.Type == "folders")
                         {
-                            if (item.type == "folders")
+                            folders.Add(new SimpleFolder()
                             {
-                                folders.Add(new SimpleFolder()
-                                {
-                                    FolderId = item?.id ?? "Unknown",
-                                    Name = item?.attributes?.name ?? "Unknown",
-                                    Url = item?.links?.webView?.href ?? "",
-                                    IsRoot = false
-                                }); ;
-                            }
+                                FolderId = item.Id,
+                                Name = item.Attributes.Name,
+                                Url = item.Links.Self.Href,  // Issue with the new SDK: does not support webView link
+                                IsRoot = false
+                            });
                         }
                     }
-
-                    if (!folderOnly && contentsResponse.included != null)
-                    {
-                        foreach (FolderItemIncluded item in contentsResponse.included)
+                    if (apsFolderContent.Included != null)
+                        foreach (var item in apsFolderContent.Included)
                         {
-                            if ((item?.type ?? "") == "versions" && (item?.attributes?.fileType ?? null) != null)
+                            if (item.Type == "versions" && item.Attributes.FileType != null)
                             {
-                                files.Add(new SimpleFile()
+                                var newfile = new SimpleFile()
                                 {
-                                    VersionId = item?.id ?? "Unknown",
-                                    Name = item?.attributes?.name ?? "Unknown",
-                                    FileType = item?.attributes?.fileType ?? "UKN",
-                                    ItemId = item?.relationships?.item?.data?.id ?? "Unknown",
-                                    DerivativeId = item?.relationships?.derivatives?.data?.id ?? "Missing",
-                                    ObjectId = item?.relationships?.storage?.data?.id ?? "Missing",
-                                    Url = item?.links?.webView?.href ?? "Missing",
-                                    LastModified = item?.attributes?.lastModifiedTime ?? DateTime.MinValue,
-                                    Size = item?.attributes.storageSize ?? 100
-                                });
+                                    VersionId = item.Id,
+                                    Name = item.Attributes.Name,
+                                    FileType = item.Attributes.FileType,
+                                    ItemId = item.Relationships.Item.Data.Id,
+                                    DerivativeId = item.Relationships.Derivatives.Data.Id,
+                                    ObjectId = item.Relationships.Storage.Data.Id,
+                                    Url = item.Links.WebView.Href,
+                                    Size = Convert.ToInt64(item.Attributes.StorageSize)
+                                };
+                                if (DateTime.TryParse(item.Attributes.LastModifiedTime, out DateTime itemTime))
+                                    newfile.LastModified = itemTime;
+                                else
+                                    newfile.LastModified = DateTime.MinValue;
+                                files.Add(newfile);
                             }
                         }
-                    }
-                    uri = contentsResponse.links.next?.href ?? null;
+                    hasNextPage = apsFolderContent.Links.Next != null;
+                    pageNumber++;
                 }
-                // catch (FlurlHttpException exception)
-                // {
-                //     if (exception.StatusCode == 403)
-                //     {
-                //         Log.Warning($"GetFolderContents returned 403");
-                //         throw;
-                //     }
-                // else if (exception.StatusCode == 429)
-                // {
-                //     failures++;
-                //     Log.Warning($"GetFolderContents returned 429: {failures}");
-                //     if (failures > 5) throw;
-                //     await Task.Delay(15000);
-                //
-                // }
-                //     else
-                //     {
-                //         Log.Error(exception.Message);
-                //         Log.Error(exception.StackTrace);
-                //        // failures++;
-                //        //  if (failures > 5) throw;
-                //     }
-                // }
                 catch (Exception exception)
                 {
                     Log.Error(exception.Message);
-                    Log.Error(exception.StackTrace);
-                    //failures++;
-                    throw;
+                    Log.Error(exception.StackTrace ?? string.Empty);
+                    failures++;
+                    if (failures > 5) throw;
                 }
             }
 

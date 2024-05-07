@@ -170,10 +170,7 @@ namespace Bulk_Uploader_Electron.Flows
             var files = new List<SimpleFile>();
 
             var token = await JointTokenManager.GetToken();
-            var (rootFolders, rootFiles) = await ForgeHelpers.GetFolderContents(
-                token,
-                projectId: projectId,
-                folderId: rootFolder.FolderId);
+            var (rootFolders, rootFiles) = await ForgeHelpers.GetFolderContents(token, projectId, rootFolder.FolderId);
 
             foreach (var file in rootFiles)
             {
@@ -217,10 +214,7 @@ namespace Bulk_Uploader_Electron.Flows
                 return;
 
             var token = await JointTokenManager.GetToken();
-            var (rootFolders, rootFiles) = await ForgeHelpers.GetFolderContents(
-                token,
-                projectId: projectId,
-                folderId: rootFolder.FolderId);
+            var (rootFolders, rootFiles) = await ForgeHelpers.GetFolderContents(token, projectId, rootFolder.FolderId);
 
             var downloadFiles = new List<BulkDownloadFile>();
 
