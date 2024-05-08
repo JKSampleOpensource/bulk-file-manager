@@ -9,11 +9,11 @@ public static class JointTokenManager
     {
         try
         {
-            return await ThreeLeggedManager.Instance.GetToken();
+            return await ThreeLeggedTokenManager.Instance.GetToken();
         }
-        catch (Exception e)
+        catch (Exception)
         {
-            return await TokenManager.GetTwoLeggedToken();
+            return await TwoLeggedTokenManager.GetTwoLeggedToken();
         }
     }
 }

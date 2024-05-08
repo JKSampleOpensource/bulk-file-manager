@@ -101,7 +101,7 @@ public class SettingsController: ControllerBase
     [Route("api/settings/threeLegged/check")]
     public async Task<ActionResult> CheckThreeLegged()
     {
-        var isAuthenticated = ThreeLeggedManager.Instance.IsAuthenticated();
+        var isAuthenticated = ThreeLeggedTokenManager.Instance.IsAuthenticated();
         return Ok(isAuthenticated);
     }
     
@@ -111,7 +111,7 @@ public class SettingsController: ControllerBase
     {
         try
         {
-            var url = ThreeLeggedManager.Instance.AuthUrl();
+            var url = ThreeLeggedTokenManager.Instance.AuthUrl();
             return Ok(url);
         }
         catch (Exception e)
@@ -124,7 +124,7 @@ public class SettingsController: ControllerBase
     [Route("api/settings/threeLegged")]
     public async Task<ActionResult> UpdateThreeLegged([FromBody] CodeDTU code)
     {
-        await ThreeLeggedManager.Instance.GetTokenFromRequestCode(code.Code);
+        await ThreeLeggedTokenManager.Instance.GetTokenFromRequestCode(code.Code);
         return Ok();
     }
     
@@ -132,7 +132,7 @@ public class SettingsController: ControllerBase
     [Route("api/settings/threeLegged")]
     public async Task<ActionResult> ClearThreeLegged()
     {
-        ThreeLeggedManager.Instance.Logout();
+        ThreeLeggedTokenManager.Instance.Logout();
         return Ok();
     }
 
@@ -140,7 +140,7 @@ public class SettingsController: ControllerBase
     [Route("/code")]
     public async Task<IActionResult> Code([FromQuery] string code)
     {
-        await ThreeLeggedManager.Instance.GetTokenFromRequestCode(code);
+        await ThreeLeggedTokenManager.Instance.GetTokenFromRequestCode(code);
         return new ContentResult 
         {
             ContentType = "text/html",

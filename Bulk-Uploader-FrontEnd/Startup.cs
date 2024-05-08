@@ -164,7 +164,7 @@ namespace Bulk_Uploader_Electron
             
             services.AddSingleton<ISettingsProvider>((sp) => new Utils.SettingsProvider(sp));
 
-            ThreeLeggedManager.InitializeInstance(AppSettings.Instance, OnTokenRefresh);
+            ThreeLeggedTokenManager.InitializeInstance(AppSettings.Instance, OnTokenRefresh);
             TwoLeggedManager.InitializeInstance(AppSettings.Instance, null);
 
             APSSettings.SetFlurSettings(true, true, true);

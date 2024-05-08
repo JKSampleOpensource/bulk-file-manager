@@ -17,9 +17,9 @@ namespace Ac.Net.Authentication
     ///
     /// This should be thread safe.
     /// </summary>
-    public class ThreeLeggedManager : ITokenManager, IDisposable
+    public class ThreeLeggedTokenManager : ITokenManager, IDisposable
     {
-        private static ThreeLeggedManager? _instance;
+        private static ThreeLeggedTokenManager? _instance;
         private static object _lockObj = new object();
         private static IAuthParamProvider? _paramProvider;
         private static TokenUpdate _tokenUpdate;
@@ -39,7 +39,7 @@ namespace Ac.Net.Authentication
         private TokenData _token = null;
         private object lockObject = new object();
 
-        public ThreeLeggedManager(AuthParameters tokenParameters)
+        public ThreeLeggedTokenManager(AuthParameters tokenParameters)
         {
             if (tokenParameters.IsImplicit) throw new ArgumentException("Must be configure for non-implicit authentication");
             tokenParameters.IsValid();
@@ -53,7 +53,7 @@ namespace Ac.Net.Authentication
 
         public event TokenUpdate OnTokenUpdate;
 
-        public static ThreeLeggedManager Instance
+        public static ThreeLeggedTokenManager Instance
         {
             get
             {
@@ -72,7 +72,7 @@ namespace Ac.Net.Authentication
                             RefreshToken = _paramProvider.RefreshToken,
                         };
 
-                        _instance = new ThreeLeggedManager(pms);
+                        _instance = new ThreeLeggedTokenManager(pms);
                         if (_tokenUpdate != null)
                         {
                             _instance.OnTokenUpdate += _tokenUpdate;
@@ -117,7 +117,7 @@ namespace Ac.Net.Authentication
             }
         }
 
-        public String BuildAuthorizationHeader(String client_id, String client_secret)
+        public string BuildAuthorizationHeader(string client_id, string client_secret)
         {
             string credentials = $"{client_id}:{client_secret}";
             string base64Credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes(credentials));

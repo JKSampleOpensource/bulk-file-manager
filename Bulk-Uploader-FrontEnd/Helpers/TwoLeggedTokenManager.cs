@@ -1,11 +1,9 @@
-﻿using Autodesk.Authentication;
-using Autodesk.Authentication.Model;
-using Autodesk.SDKManager;
+﻿using Autodesk.Authentication.Model;
 using Bulk_Uploader_Electron.Helpers;
 
 namespace Bulk_Uploader_Electron.Managers
 {
-    public static class TokenManager
+    public static class TwoLeggedTokenManager
     {
         private static string TwoLeggedToken { get; set; } = "";
         private static DateTime TwoLeggedTokenExpiration { get; set; }

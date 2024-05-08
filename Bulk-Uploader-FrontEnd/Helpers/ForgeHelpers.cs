@@ -14,7 +14,7 @@ namespace Bulk_Uploader_Electron.Utilities
         {
             try
             {
-                token ??= await TokenManager.GetTwoLeggedToken();
+                token ??= await TwoLeggedTokenManager.GetTwoLeggedToken();
                 var apsHubs = await APSClientHelper.DataManagement.GetHubsAsync(accessToken: token);
                 var accounts = new List<Account>();
                 foreach (var hub in apsHubs.Data)
@@ -270,7 +270,7 @@ namespace Bulk_Uploader_Electron.Utilities
         /// <param name="minutesExpiration">[minutesExpiration] Custom expiration for the upload URLs (within the 1 to 60 minutes range). If not specified, default is 2 minutes.
         public static async Task<Autodesk.Oss.Model.Signeds3uploadResponse> GetUploadUrls(string bucketKey, string objectKey, int? minutesExpiration, int parts = 1, int firstPart = 1, string uploadKey = null)
         {
-            var token = await TokenManager.GetTwoLeggedToken();
+            var token = await TwoLeggedTokenManager.GetTwoLeggedToken();
 
             var apsS3UploadUrl = await APSClientHelper.OssApi.SignedS3UploadAsync(bucketKey, objectKey, accessToken: token, minutesExpiration: minutesExpiration, parts: parts, firstPart: firstPart, uploadKey: uploadKey);
             if (apsS3UploadUrl.HttpResponse.IsSuccessStatusCode)
@@ -293,7 +293,7 @@ namespace Bulk_Uploader_Electron.Utilities
         {
             try
             {
-                var token = await TokenManager.GetTwoLeggedToken();
+                var token = await TwoLeggedTokenManager.GetTwoLeggedToken();
                 Autodesk.Oss.Model.Completes3uploadBody body = new() { UploadKey = uploadKey };
                 var apsCompleteUpload = await APSClientHelper.OssApi.CompleteSignedS3UploadAsync(bucketKey, objectKey, "application/json", body, accessToken: token);
                 return apsCompleteUpload.IsSuccessStatusCode;
@@ -311,7 +311,7 @@ namespace Bulk_Uploader_Electron.Utilities
         {
             try
             {
-                var token = await TokenManager.GetTwoLeggedToken();
+                var token = await TwoLeggedTokenManager.GetTwoLeggedToken();
                 Autodesk.DataManagement.Model.StoragePayload storagePayload = new()
                 {
                     Jsonapi = new() { _Version = Autodesk.DataManagement.Model.VersionNumber._10 },
@@ -351,7 +351,7 @@ namespace Bulk_Uploader_Electron.Utilities
             try
             {
                 projectId = projectId.StartsWith("b.") ? projectId : $"b.{projectId}";  // Is it required?
-                var token = await TokenManager.GetTwoLeggedToken();
+                var token = await TwoLeggedTokenManager.GetTwoLeggedToken();
 
                 Autodesk.DataManagement.Model.FolderPayload folderPayload = new()
                 {
@@ -400,7 +400,7 @@ namespace Bulk_Uploader_Electron.Utilities
             try
             {
                 projectId = projectId.Split(".")[0] == "b" ? projectId : "b." + projectId;  // Is it required?
-                var token = await TokenManager.GetTwoLeggedToken();
+                var token = await TwoLeggedTokenManager.GetTwoLeggedToken();
 
                 Autodesk.DataManagement.Model.ItemPayload itemPayload = new()
                 {
@@ -484,7 +484,7 @@ namespace Bulk_Uploader_Electron.Utilities
             try
             {
                 projectId = projectId.Split(".")[0] == "b" ? projectId : "b." + projectId;
-                var token = await TokenManager.GetTwoLeggedToken();
+                var token = await TwoLeggedTokenManager.GetTwoLeggedToken();
 
                 Autodesk.DataManagement.Model.VersionPayload versionPayload = new()
                 {

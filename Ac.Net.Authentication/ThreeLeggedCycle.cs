@@ -146,10 +146,10 @@ namespace Ac.Net.Authentication
                 }
             }
 
-            var result = new List<ThreeLeggedManager>();
+            var result = new List<ThreeLeggedTokenManager>();
             foreach (var item in AuthData)
             {
-                var newManager = new ThreeLeggedManager(item);
+                var newManager = new ThreeLeggedTokenManager(item);
                 newManager.OnTokenUpdate += OnTokeUpdate;
                 try
                 {
@@ -281,7 +281,7 @@ namespace Ac.Net.Authentication
             {
                 try
                 {
-                    var newManager = new ThreeLeggedManager(tokenParameters);
+                    var newManager = new ThreeLeggedTokenManager(tokenParameters);
                     newManager.OnTokenUpdate += OnTokeUpdate;
                     var t = await newManager.GetToken();
                     managers = managers.Add(newManager);
