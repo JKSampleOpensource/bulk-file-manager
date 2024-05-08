@@ -253,16 +253,15 @@ public class HangfireJobs
                 try
                 {
                     //Create Folder
-                    var folder =
-                        await ForgeHelpers.CreateFolder(bulkUpload.ProjectId, lastMirror.FolderUrn, folderName);
+                    var folder = await ForgeHelpers.CreateFolder(bulkUpload.ProjectId, lastMirror.FolderUrn, folderName);
                     bulkUploadFile.AddLogs($"Created folder: {path}");
                     var newMirrorFolder = new BulkUploadAutodeskMirror()
                     {
                         BulkUploadId = bulkUploadId,
                         ContentsRetrieved = true,
-                        FolderName = folder.data.attributes.name,
-                        FolderUrn = folder.data.id,
-                        FolderUrl = folder.links?.webView?.href ?? "",
+                        FolderName = folder.Data.Attributes.Name,
+                        FolderUrn = folder.Data.Id,
+                        FolderUrl = folder.Links.Self.Href, // Issue with the new SDK: missing -> folder.Links?.WebView?.Href,
                         RelativeFolderPath = path
                     };
 
@@ -382,10 +381,8 @@ public class HangfireJobs
         try
         {
             //Create storage location
-            var storageLocation =
-                await ForgeHelpers.CreateStorageLocation(bulkUpload.ProjectId, bulkUploadFile.TargetFileName,
-                    bulkUpload.FolderId);
-            bulkUploadFile.ObjectId = storageLocation.data.id.Replace("urn:adsk.objects:os.object:wip.dm.prod/", "");
+            var storageLocation = await ForgeHelpers.CreateStorageLocation(bulkUpload.ProjectId, bulkUploadFile.TargetFileName, bulkUpload.FolderId);
+            bulkUploadFile.ObjectId = storageLocation.Data.Id.Replace("urn:adsk.objects:os.object:wip.dm.prod/", "");
             _context.BulkUploadFiles.Update(bulkUploadFile);
             await _context.SaveChangesAsync();
 
@@ -485,8 +482,8 @@ public class HangfireJobs
                 {
                     var version = await ForgeHelpers.CreateFirstVersion(bulkUpload.ProjectId,
                         bulkUploadFile.TargetFileName, bulkUploadFile.FolderUrn, bulkUploadFile.ObjectId);
-                    bulkUploadFile.VersionId = version.data.id;
-                    bulkUploadFile.WebUrl = version.links?.webView?.href ?? "";
+                    bulkUploadFile.VersionId = version.Data.Id;
+                    bulkUploadFile.WebUrl = version.Links.Self.Href;  // Issue with the new SDK: missing -> version.Link.WebView.Href
                 }
                 catch (FlurlHttpException e)
                 {
@@ -506,8 +503,8 @@ public class HangfireJobs
             {
                 var version = await ForgeHelpers.CreateNextVersion(bulkUpload.ProjectId, bulkUploadFile.TargetFileName,
                     bulkUploadFile.ItemId, bulkUploadFile.ObjectId);
-                bulkUploadFile.VersionId = version.data.id;
-                bulkUploadFile.WebUrl = version.links?.webView?.href ?? "";
+                bulkUploadFile.VersionId = version.Data.Id;
+                bulkUploadFile.WebUrl = version.Links.Self.Href;  // Issue with the new SDK: missing -> version.Link.WebView.Href
             }
 
             _context.BulkUploadFiles.Update(bulkUploadFile);

@@ -34,6 +34,7 @@ using Bulk_Uploader_Electron.Models.Forge.Project;
 using Org.BouncyCastle.Asn1.Ocsp;
 using Bulk_Uploader_Electron.Helpers;
 using APSProject = Autodesk.DataManagement.Model.Project;
+using System;
 
 namespace Bulk_Uploader_Electron.Utilities
 {
@@ -315,16 +316,22 @@ namespace Bulk_Uploader_Electron.Utilities
 
         public static async Task<Stream> GetDownloadStream(string token, string storageUrn)
         {
-            var bucketKey = HttpUtility.UrlEncode("wip.dm.prod");
-            var objectName = HttpUtility.UrlEncode(storageUrn.Split('/').Last());
-
-            var downloadUrl = await GetDownloadUrl(token, bucketKey, objectName);
-
-            var response = await downloadUrl
-                .WithHeader("ConnectionClose", true)
-                .SendAsync(HttpMethod.Get);
-
-            return await response.GetStreamAsync();
+            try
+            {
+                var bucketKey = HttpUtility.UrlEncode("wip.dm.prod");
+                var objectName = HttpUtility.UrlEncode(storageUrn.Split('/').Last());
+                var downloadUrl = await GetDownloadUrl(token, bucketKey, objectName);
+                var response = await downloadUrl
+                    .WithHeader("ConnectionClose", true)
+                    .SendAsync(HttpMethod.Get);
+                return await response.GetStreamAsync();
+            }
+            catch (Exception exception)
+            {
+                Log.Error(exception.Message);
+                Log.Error(exception.StackTrace ?? string.Empty);
+                throw;
+            }
         }
 
         /// <summary>
@@ -340,12 +347,12 @@ namespace Bulk_Uploader_Electron.Utilities
         {
             var token = await TokenManager.GetTwoLeggedToken();
 
-            var apsS3UploadUrl = await APSClientHelper.OssApi.SignedS3UploadAsync(bucketKey, objectKey, accessToken: token, minutesExpiration: minutesExpiration, parts:parts, firstPart: firstPart, uploadKey: uploadKey);
-            if(apsS3UploadUrl.HttpResponse.IsSuccessStatusCode)
+            var apsS3UploadUrl = await APSClientHelper.OssApi.SignedS3UploadAsync(bucketKey, objectKey, accessToken: token, minutesExpiration: minutesExpiration, parts: parts, firstPart: firstPart, uploadKey: uploadKey);
+            if (apsS3UploadUrl.HttpResponse.IsSuccessStatusCode)
             {
                 return apsS3UploadUrl.Content;
             }
-            if(apsS3UploadUrl.HttpResponse.StatusCode == HttpStatusCode.TooManyRequests)
+            if (apsS3UploadUrl.HttpResponse.StatusCode == HttpStatusCode.TooManyRequests)
             {
                 _ = int.TryParse(apsS3UploadUrl.HttpResponse.Headers.GetValues("Retry-After").FirstOrDefault(), out int retryAfter);
                 await Task.Delay(retryAfter);
@@ -357,301 +364,249 @@ namespace Bulk_Uploader_Electron.Utilities
             }
         }
 
-        public static async Task<ForgeStorageCreation> CreateStorageLocation(string projectId, string fileName, string folderUrn)
-        {
-            try
-            {
-                //projectId = projectId.StartsWith("b.") ? projectId : $"b.{projectId}";
-                var token = await TokenManager.GetTwoLeggedToken();
-
-                var request = await (AppSettings.GetUriPath(AppSettings.Instance.ProjectsEndpoint) + $"/{projectId}/storage")
-                    .WithOAuthBearerToken(token)
-                    .PostJsonAsync(new
-                    {
-                        jsonapi = new { version = "1.0" },
-                        data = new
-                        {
-                            type = "objects",
-                            attributes = new
-                            {
-                                name = fileName
-                            },
-                            relationships = new
-                            {
-                                target = new
-                                {
-                                    data = new
-                                    {
-                                        type = "folders",
-                                        id = folderUrn
-                                    }
-                                }
-                            }
-                        }
-                    });
-
-                var response = await request.GetJsonAsync<ForgeStorageCreation>();
-
-                return response;
-            }
-            catch (FlurlHttpException exception)
-            {
-                var response = await exception.GetResponseJsonAsync();
-                Log.Error(exception.Message);
-                throw;
-            }
-            catch (Exception exception)
-            {
-                Log.Error(exception.Message);
-                throw;
-            }
-        }
-
         public static async Task<bool> CompleteUpload(string bucketKey, string objectKey, string uploadKey)
         {
-            var token = await TokenManager.GetTwoLeggedToken();
-
-            Autodesk.Oss.Model.Completes3uploadBody body = new() { UploadKey = uploadKey};
-            var apsCompleteUpload = await APSClientHelper.OssApi.CompleteSignedS3UploadAsync(bucketKey, objectKey, "application/json", body, accessToken: token);
-            return apsCompleteUpload.IsSuccessStatusCode;
-
-            //string endpoint = $"/buckets/{bucketKey}/objects/{HttpUtility.UrlEncode(objectKey)}/signeds3upload";
-            //RestClient client = new RestClient($"https://developer.api.autodesk.com/oss/v2");
-            //RestRequest request = new RestRequest(endpoint, Method.Post);
-
-
-            //request.AddHeader("Authorization", "Bearer " + token);
-            //request.AddHeader("Content-Type", "application/json");
-
-            //request.AddJsonBody(new { uploadKey = $"{uploadKey}" });
-
-            //var response = await client.ExecuteAsync(request);
-
-            //return response;
-        }
-
-        public static async Task<ForgeCreateFolder> CreateFolder(string projectId, string parentFolderId, string folderName)
-        {
-            await Task.Delay(10000);
             try
             {
-                projectId = projectId.StartsWith("b.") ? projectId : $"b.{projectId}";
                 var token = await TokenManager.GetTwoLeggedToken();
-
-                var request = await (AppSettings.GetUriPath(AppSettings.Instance.ProjectsEndpoint) + $"/{projectId}/folders")
-                    .WithOAuthBearerToken(token)
-                    .AllowHttpStatus(HttpStatusCode.TooManyRequests)
-                    .PostJsonAsync(new
-                    {
-                        jsonapi = new { version = "1.0" },
-                        data = new
-                        {
-                            type = "folders",
-                            attributes = new
-                            {
-                                name = folderName,
-                                extension = new
-                                {
-                                    type = "folders:autodesk.bim360:Folder",
-                                    version = "1.0"
-                                }
-                            },
-                            relationships = new
-                            {
-                                parent = new
-                                {
-                                    data = new
-                                    {
-                                        type = "folders",
-                                        id = parentFolderId
-                                    }
-                                }
-                            }
-                        }
-                    });
-
-                if (request.StatusCode == 429)
-                {
-                    await Task.Delay(15000);
-                    return await CreateFolder(projectId, parentFolderId, folderName);
-                }
-
-                var response = await request.GetJsonAsync<ForgeCreateFolder>();
-
-                return response;
+                Autodesk.Oss.Model.Completes3uploadBody body = new() { UploadKey = uploadKey };
+                var apsCompleteUpload = await APSClientHelper.OssApi.CompleteSignedS3UploadAsync(bucketKey, objectKey, "application/json", body, accessToken: token);
+                return apsCompleteUpload.IsSuccessStatusCode;
             }
-
             catch (Exception exception)
             {
-                Log.Error("Error Creating Folder: " + folderName);
-                Console.WriteLine("Error Creating Folder: " + folderName);
+                Log.Error(exception.Message);
+                Log.Error(exception.StackTrace ?? string.Empty);
                 throw;
             }
         }
 
-        public static async Task<ForgeFirstVersionResponse> CreateFirstVersion(string projectId, string fileName, string folderId, string objectId)
+
+        public static async Task<Autodesk.DataManagement.Model.Storage> CreateStorageLocation(string projectId, string fileName, string folderUrn)
         {
             try
             {
-                projectId = projectId.Split(".")[0] == "b" ? projectId : "b." + projectId;
+                var token = await TokenManager.GetTwoLeggedToken();
+                Autodesk.DataManagement.Model.StoragePayload storagePayload = new()
+                {
+                    Jsonapi = new() { _Version = Autodesk.DataManagement.Model.VersionNumber._10 },
+                    Data = new()
+                    {
+                        Type = Autodesk.DataManagement.Model.Type.Objects,
+                        Attributes = new()
+                        {
+                            Name = fileName
+                        },
+                        Relationships = new()
+                        {
+                            Target = new()
+                            {
+                                Data = new()
+                                {
+                                    Type = Autodesk.DataManagement.Model.Type.Folders,
+                                    Id = folderUrn
+                                }
+                            }
+                        }
+                    }
+                };
+                return await APSClientHelper.DataManagement.CreateStorageAsync(projectId, storagePayload: storagePayload, accessToken: token);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+                Log.Error(ex.Message);
+                throw;
+            }
+        }
+
+        public static async Task<Autodesk.DataManagement.Model.Folder> CreateFolder(string projectId, string parentFolderId, string folderName)
+        {
+            await Task.Delay(10000);  // What is the purpose of this 10sec delay?
+            try
+            {
+                projectId = projectId.StartsWith("b.") ? projectId : $"b.{projectId}";  // Is it required?
                 var token = await TokenManager.GetTwoLeggedToken();
 
-                var request = await (AppSettings.GetUriPath(AppSettings.Instance.ProjectsEndpoint) + $"/{projectId}/items")
-                    .WithOAuthBearerToken(token)
-                    .AllowHttpStatus(HttpStatusCode.TooManyRequests)
-                    .PostJsonAsync(new
+                Autodesk.DataManagement.Model.FolderPayload folderPayload = new()
+                {
+                    Jsonapi = new() { _Version = Autodesk.DataManagement.Model.VersionNumber._10 },
+                    Data = new()
                     {
-                        jsonapi = new { version = "1.0" },
-                        data = new
+                        Type = Autodesk.DataManagement.Model.Type.Folders,
+                        Attributes = new()
                         {
-                            type = "items",
-                            attributes = new
+                            Name = folderName,
+                            Extension = new()
                             {
-                                displayName = fileName,
-                                extension = new
-                                {
-                                    type = "items:autodesk.bim360:File",
-                                    //type = "items:autodesk.core:File",
-                                    version = "1.0"
-                                }
-                            },
-                            relationships = new
-                            {
-                                tip = new
-                                {
-                                    data = new
-                                    {
-                                        type = "versions",
-                                        id = "1"
-                                    }
-                                },
-                                parent = new
-                                {
-                                    data = new
-                                    {
-                                        type = "folders",
-                                        id = folderId
-                                    }
-                                }
+                                Type = Autodesk.DataManagement.Model.Type.FoldersautodeskBim360Folder, // "folders:autodesk.bim360:Folder",
+                                _Version = Autodesk.DataManagement.Model.VersionNumber._10
                             }
                         },
-                        included = new List<dynamic>()
+                        Relationships = new()
                         {
-                            new
+                            Parent = new()
                             {
-                                type = "versions",
-                                id = "1",
-                                attributes = new
+                                Data = new()
                                 {
-                                    name = fileName,
-                                    extension = new
-                                    {
-                                        type = "versions:autodesk.bim360:File",
-                                        version = "1.0"
-                                    }
-                                },
-                                relationships = new
+                                    Type = Autodesk.DataManagement.Model.Type.Folders,
+                                    Id = parentFolderId
+                                }
+                            }
+                        }
+                    }
+                };
+                var apsCreateFolder = await APSClientHelper.DataManagement.CreateFolderAsync(projectId, folderPayload: folderPayload, accessToken: token);
+                // Issue with the new SDK:  how to handle 429 status response for retry.
+                return apsCreateFolder;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error Creating Folder: " + folderName);
+                Log.Error("Error Creating Folder: " + folderName);
+                Console.WriteLine(ex.Message);
+                Log.Error(ex.Message);
+                throw;
+            }
+        }
+
+        public static async Task<Autodesk.DataManagement.Model.Item> CreateFirstVersion(string projectId, string fileName, string folderId, string objectId)
+        {
+            try
+            {
+                projectId = projectId.Split(".")[0] == "b" ? projectId : "b." + projectId;  // Is it required?
+                var token = await TokenManager.GetTwoLeggedToken();
+
+                Autodesk.DataManagement.Model.ItemPayload itemPayload = new()
+                {
+                    Jsonapi = new() { _Version = Autodesk.DataManagement.Model.VersionNumber._10 },
+                    Data = new()
+                    {
+                        Type = Autodesk.DataManagement.Model.Type.Items,
+                        Attributes = new()
+                        {
+                            DisplayName = fileName,
+                            Extension = new()
+                            {
+                                Type = Autodesk.DataManagement.Model.Type.ItemsautodeskBim360File, // "items:autodesk.bim360:File",,
+                                _Version = Autodesk.DataManagement.Model.VersionNumber._10
+                            }
+                        },
+                        Relationships = new()
+                        {
+                            Tip = new()
+                            {
+                                Data = new()
                                 {
-                                    storage = new
+                                    Type = Autodesk.DataManagement.Model.Type.Versions,
+                                    Id = "1"
+                                }
+                            },
+                            Parent = new()
+                            {
+                                Data = new()
+                                {
+                                    Type = Autodesk.DataManagement.Model.Type.Folders,
+                                    Id = folderId
+                                }
+                            }
+                        }
+                    },
+                    Included = new()
+                    {
+                        new() {
+                            Type = Autodesk.DataManagement.Model.Type.Versions,
+                            Id = "1",
+                            Attributes = new()
+                            {
+                                Name = fileName,
+                                Extension = new()
+                                {
+                                    Type = Autodesk.DataManagement.Model.Type.VersionsautodeskBim360File, // "versions:autodesk.bim360:File",
+                                    _Version = Autodesk.DataManagement.Model.VersionNumber._10
+                                }
+                            },
+                            Relationships = new()
+                            {
+                                Storage = new()
+                                {
+                                    Data = new()
                                     {
-                                        data = new
-                                        {
-                                            type = "objects",
-                                            id = $"urn:adsk.objects:os.object:wip.dm.prod/{objectId}"
-                                        }
+                                        Type = Autodesk.DataManagement.Model.Type.Objects,
+                                        Id = $"urn:adsk.objects:os.object:wip.dm.prod/{objectId}"
                                     }
                                 }
                             }
                         }
-                    });
-
-                if (request.StatusCode == 429)
-                {
-                    await Task.Delay(15000);
-                    return await CreateFirstVersion(projectId, fileName, folderId, objectId);
-                }
-
-                var response = await request.GetJsonAsync<ForgeFirstVersionResponse>();
-
-                return response;
+                    }
+                };
+                var apsCreateItems = await APSClientHelper.DataManagement.CreateItemAsync(projectId, itemPayload: itemPayload, accessToken: token);
+                // Issue with the new SDK:  how to handle 429 status response for retry.
+                return apsCreateItems;
             }
-            catch (FlurlHttpException exception)
-            {
-                throw;
-            }
-
-            catch (Exception exception)
+            catch (Exception ex)
             {
                 Console.WriteLine("Failed to upload the first version of file " + fileName);
                 Log.Error("Failed to upload the first version of file " + fileName);
+                Console.WriteLine(ex.Message);
+                Log.Error(ex.Message);
                 throw;
             }
         }
 
-        public static async Task<ForgeFirstVersionResponse> CreateNextVersion(string projectId, string fileName, string itemId, string objectId)
+        public static async Task<Autodesk.DataManagement.Model.ModelVersion> CreateNextVersion(string projectId, string fileName, string itemId, string objectId)
         {
             try
             {
-                var token = await TokenManager.GetTwoLeggedToken();
                 projectId = projectId.Split(".")[0] == "b" ? projectId : "b." + projectId;
-                var request = await (AppSettings.GetUriPath(AppSettings.Instance.ProjectsEndpoint) + $"/{projectId}/versions")
-                    .WithOAuthBearerToken(token)
-                    .AllowHttpStatus(HttpStatusCode.TooManyRequests)
-                    .PostJsonAsync(new
+                var token = await TokenManager.GetTwoLeggedToken();
+
+                Autodesk.DataManagement.Model.VersionPayload versionPayload = new()
+                {
+                    Jsonapi = new() { _Version = Autodesk.DataManagement.Model.VersionNumber._10 },
+                    Data = new()
                     {
-                        jsonapi = new { version = "1.0" },
-                        data = new
+                        Type = Autodesk.DataManagement.Model.Type.Versions,
+                        Attributes = new()
                         {
-                            type = "versions",
-                            attributes = new
+                            DisplayName = fileName,
+                            Extension = new()
                             {
-                                displayName = fileName,
-                                extension = new
+                                Type = Autodesk.DataManagement.Model.Type.VersionsautodeskBim360File, // "versions:autodesk.bim360:File",,
+                                _Version = Autodesk.DataManagement.Model.VersionNumber._10
+                            }
+                        },
+                        Relationships = new()
+                        {
+                            Item = new()
+                            {
+                                Data = new()
                                 {
-                                    type = "versions:autodesk.bim360:File",
-                                    version = "1.0"
+                                    Type = Autodesk.DataManagement.Model.Type.Items,
+                                    Id = itemId
                                 }
                             },
-                            relationships = new
+                            Storage = new()
                             {
-                                item = new
+                                Data = new()
                                 {
-                                    data = new
-                                    {
-                                        type = "items",
-                                        id = itemId
-                                    }
-                                },
-                                storage = new
-                                {
-                                    data = new
-                                    {
-                                        type = "objects",
-                                        id = $"urn:adsk.objects:os.object:wip.dm.prod/{objectId}"
-
-                                    }
+                                    Type = Autodesk.DataManagement.Model.Type.Objects,
+                                    Id = $"urn:adsk.objects:os.object:wip.dm.prod/{objectId}"
                                 }
                             }
                         }
-                    });
-
-                if (request.StatusCode == 429)
-                {
-                    await Task.Delay(15000);
-                    return await CreateNextVersion(projectId, fileName, itemId, objectId);
-                }
-
-                var response = await request.GetJsonAsync<ForgeFirstVersionResponse>();
-
-                return response;
+                    }
+                };
+                var apsCreateVersions = await APSClientHelper.DataManagement.CreateVersionAsync(projectId, versionPayload: versionPayload, accessToken: token);
+                // Issue with the new SDK:  how to handle 429 status response for retry.
+                return apsCreateVersions;
             }
-
-            catch (Exception exception)
+            catch (Exception ex)
             {
                 Console.WriteLine("Could not create next version of folder: " + fileName);
-                Console.WriteLine(exception.Message);
-                Log.Error(exception.Message);
-
+                Log.Error("Could not create next version of folder: " + fileName);
+                Console.WriteLine(ex.Message);
+                Log.Error(ex.Message);
                 throw;
             }
         }
