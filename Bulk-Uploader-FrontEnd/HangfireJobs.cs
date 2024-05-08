@@ -429,11 +429,9 @@ public class HangfireJobs
                             int partInt = Convert.ToInt32(part);
 
                             int partsUploadInt = Convert.ToInt32(partsUploaded) + 1;
-                            dynamic uploadParams = await ForgeHelpers.getUploadUrls("wip.dm.prod",
-                                bulkUploadFile.ObjectId, 60,
-                                partInt, partsUploadInt, uploadKey);
-                            uploadKey = uploadParams.uploadKey;
-                            uploadUrls = uploadParams.urls.ToObject<List<string>>();
+                            var uploadParams = await ForgeHelpers.GetUploadUrls("wip.dm.prod", bulkUploadFile.ObjectId, 60, partInt, partsUploadInt, uploadKey);
+                            uploadKey = uploadParams.UploadKey;
+                            uploadUrls = uploadParams.Urls;
                         }
 
                         string currentUrl = uploadUrls[0];
@@ -478,7 +476,7 @@ public class HangfireJobs
                 }
             }
 
-            await ForgeHelpers.CompleteUpload("wip.dm.prod", bulkUploadFile.ObjectId, uploadKey);
+            _ = await ForgeHelpers.CompleteUpload("wip.dm.prod", bulkUploadFile.ObjectId, uploadKey);
 
             //Create Version or Update Version
             if (string.IsNullOrWhiteSpace(bulkUploadFile.ItemId))

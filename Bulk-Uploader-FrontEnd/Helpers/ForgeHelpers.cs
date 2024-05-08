@@ -211,7 +211,7 @@ namespace Bulk_Uploader_Electron.Utilities
             try
             {
                 var apsProject = await APSClientHelper.DataManagement.GetProjectAsync(hubId, projectId, accessToken: token);
-                var apsFolder = await APSClientHelper.DataManagement.GetFolderAsync(hubId, projectId, apsFolderUrn, accessToken: token);
+                var apsFolder = await APSClientHelper.DataManagement.GetFolderAsync(projectId, apsFolderUrn, accessToken: token);
 
                 return new SimpleFolder
                 {
@@ -294,63 +294,30 @@ namespace Bulk_Uploader_Electron.Utilities
             return (folders, files);
         }
 
-        public static async Task<ForgeVersions> GetVersion(string projectId, string version)
-        {
-            projectId = projectId.Substring(0, 2) == "b." ? projectId : "b." + projectId;
-            var token = await TokenManager.GetTwoLeggedToken();
-
-            string encodedUrn = HttpUtility.UrlEncode(version);
-
-            var request =
-                await (AppSettings.GetUriPath(AppSettings.Instance.ProjectsEndpoint) + $"/{projectId}/versions/{encodedUrn}")
-                    .WithOAuthBearerToken(token)
-                    .AllowHttpStatus(HttpStatusCode.TooManyRequests)
-                    .GetAsync();
-
-
-            if (request.StatusCode == 429)
-            {
-
-                await Task.Delay(15000);
-                return await GetVersion(projectId, version);
-            }
-
-            return await request.GetJsonAsync<ForgeVersions>();
-        }
-
-        public static async Task<string> GetDownloadUrl(string token, string bucketKey, string objectName, int timeout = 3)
+        public static async Task<string> GetDownloadUrl(string token, string bucketKey, string objectKey, int minutesExpiration = 3)
         {
             try
             {
-                var signedResponse =
-                    await
-                     (AppSettings.GetUriPath(AppSettings.Instance.BucketsEndpoint) + $"/{bucketKey}/objects/{objectName}/signeds3download")
-                            .WithOAuthBearerToken(token)
-                            .SetQueryParam("public-resource-fallback", true)
-                            .SetQueryParam("minutesExpiration", timeout.ToString())
-                            .GetJsonAsync<ForgeSignedS3Url>();
+                var apsS3DownloadUrl = await APSClientHelper.OssApi.SignedS3DownloadAsync(bucketKey, objectKey, accessToken: token, minutesExpiration: minutesExpiration, publicResourceFallback: true);
 
-                if (signedResponse.status == "complete" || signedResponse.status == "fallback")
-                {
-                    return signedResponse.url;
-                }
-                else
-                {
-                    throw new Exception("Signed Response Failed");
-                }
+                if (apsS3DownloadUrl.Content.Status == "complete" || apsS3DownloadUrl.Content.Status == "fallback")
+                    return apsS3DownloadUrl.Content.Url;
+                else throw new Exception("Signed Response Failed");
             }
             catch (Exception exception)
             {
                 Log.Error(exception.Message);
                 Log.Error(exception.StackTrace ?? "No Stack");
-                // failures++;
                 throw;
             }
 
         }
 
-        public static async Task<Stream> DownloadObject(string token, string bucketKey, string objectName)
+        public static async Task<Stream> GetDownloadStream(string token, string storageUrn)
         {
+            var bucketKey = HttpUtility.UrlEncode("wip.dm.prod");
+            var objectName = HttpUtility.UrlEncode(storageUrn.Split('/').Last());
+
             var downloadUrl = await GetDownloadUrl(token, bucketKey, objectName);
 
             var response = await downloadUrl
@@ -360,19 +327,41 @@ namespace Bulk_Uploader_Electron.Utilities
             return await response.GetStreamAsync();
         }
 
-        public static async Task<Stream> GetDownloadStream(string token, string storageUrn)
+        /// <summary>
+        /// Return the URLs to upload the file
+        /// </summary>
+        /// <param name="bucketKey">Bucket key</param>
+        /// <param name="objectKey">Object key</param>
+        /// <param name="parts">[parts=1] How many URLs to generate in case of multi-part upload</param>
+        /// <param name="firstPart">B[firstPart=1] Index of the part the first returned URL should point to</param>
+        /// <param name="uploadKey">[uploadKey] Optional upload key if this is a continuation of a previously initiated upload</param>
+        /// <param name="minutesExpiration">[minutesExpiration] Custom expiration for the upload URLs (within the 1 to 60 minutes range). If not specified, default is 2 minutes.
+        public static async Task<Autodesk.Oss.Model.Signeds3uploadResponse> GetUploadUrls(string bucketKey, string objectKey, int? minutesExpiration, int parts = 1, int firstPart = 1, string uploadKey = null)
         {
-            var bucketKey = HttpUtility.UrlEncode("wip.dm.prod");
-            var objectName = HttpUtility.UrlEncode(storageUrn.Split('/').Last());
+            var token = await TokenManager.GetTwoLeggedToken();
 
-            return await DownloadObject(token, bucketKey, objectName);
+            var apsS3UploadUrl = await APSClientHelper.OssApi.SignedS3UploadAsync(bucketKey, objectKey, accessToken: token, minutesExpiration: minutesExpiration, parts:parts, firstPart: firstPart, uploadKey: uploadKey);
+            if(apsS3UploadUrl.HttpResponse.IsSuccessStatusCode)
+            {
+                return apsS3UploadUrl.Content;
+            }
+            if(apsS3UploadUrl.HttpResponse.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                _ = int.TryParse(apsS3UploadUrl.HttpResponse.Headers.GetValues("Retry-After").FirstOrDefault(), out int retryAfter);
+                await Task.Delay(retryAfter);
+                return await GetUploadUrls(bucketKey, objectKey, minutesExpiration, parts, firstPart, uploadKey);
+            }
+            else
+            {
+                throw new Exception("Failed to get upload URLs");
+            }
         }
 
         public static async Task<ForgeStorageCreation> CreateStorageLocation(string projectId, string fileName, string folderUrn)
         {
             try
             {
-                projectId = projectId.StartsWith("b.") ? projectId : $"b.{projectId}";
+                //projectId = projectId.StartsWith("b.") ? projectId : $"b.{projectId}";
                 var token = await TokenManager.GetTwoLeggedToken();
 
                 var request = await (AppSettings.GetUriPath(AppSettings.Instance.ProjectsEndpoint) + $"/{projectId}/storage")
@@ -418,70 +407,86 @@ namespace Bulk_Uploader_Electron.Utilities
             }
         }
 
-        /// <summary>
-        /// Return the URLs to upload the file
-        /// </summary>
-        /// <param name="bucketKey">Bucket key</param>
-        /// <param name="objectKey">Object key</param>
-        /// <param name="parts">[parts=1] How many URLs to generate in case of multi-part upload</param>
-        /// <param name="firstPart">B[firstPart=1] Index of the part the first returned URL should point to</param>
-        /// <param name="uploadKey">[uploadKey] Optional upload key if this is a continuation of a previously initiated upload</param>
-        /// <param name="minutesExpiration">[minutesExpiration] Custom expiration for the upload URLs (within the 1 to 60 minutes range). If not specified, default is 2 minutes.
-        public static async Task<dynamic> getUploadUrls(string bucketKey, string objectKey, int? minutesExpiration, int parts = 1, int firstPart = 1, string uploadKey = null)
+        public static async Task<bool> CompleteUpload(string bucketKey, string objectKey, string uploadKey)
         {
-            string endpoint = $"/{bucketKey}/objects/{HttpUtility.UrlEncode(objectKey)}/signeds3upload";
             var token = await TokenManager.GetTwoLeggedToken();
 
-            var BASE_URL = AppSettings.GetUriPath(AppSettings.Instance.BucketsEndpoint);
-            RestClient client = new RestClient(BASE_URL);
-            RestRequest request = new RestRequest(endpoint, RestSharp.Method.Get);
-            request.AddHeader("Authorization", "Bearer " + token);
-            request.AddHeader("Content-Type", "application/json");
-            request.AddParameter("parts", parts, ParameterType.QueryString);
-            request.AddParameter("firstPart", firstPart, ParameterType.QueryString);
+            Autodesk.Oss.Model.Completes3uploadBody body = new() { UploadKey = uploadKey};
+            var apsCompleteUpload = await APSClientHelper.OssApi.CompleteSignedS3UploadAsync(bucketKey, objectKey, "application/json", body, accessToken: token);
+            return apsCompleteUpload.IsSuccessStatusCode;
 
-            if (!string.IsNullOrEmpty(uploadKey))
-            {
-                request.AddParameter("uploadKey", uploadKey, ParameterType.QueryString);
-            }
+            //string endpoint = $"/buckets/{bucketKey}/objects/{HttpUtility.UrlEncode(objectKey)}/signeds3upload";
+            //RestClient client = new RestClient($"https://developer.api.autodesk.com/oss/v2");
+            //RestRequest request = new RestRequest(endpoint, Method.Post);
 
-            if (minutesExpiration != null)
-            {
-                request.AddParameter("minutesExpiration", minutesExpiration, ParameterType.QueryString);
-            }
 
-            var response = await client.ExecuteAsync(request);
+            //request.AddHeader("Authorization", "Bearer " + token);
+            //request.AddHeader("Content-Type", "application/json");
 
-            //Here we handle 429 for Get Upload URLs
-            if (response.StatusCode == HttpStatusCode.TooManyRequests)
-            {
-                int retryAfter = 0;
-                int.TryParse(response.Headers.ToList()
-                    .Find(x => x.Name == "Retry-After")
-                    .Value.ToString(), out retryAfter);
-                Task.WaitAll(Task.Delay(retryAfter));
-                return await getUploadUrls(bucketKey, objectKey, minutesExpiration, parts, firstPart, uploadKey);
-            }
+            //request.AddJsonBody(new { uploadKey = $"{uploadKey}" });
 
-            return JsonConvert.DeserializeObject(response.Content);
+            //var response = await client.ExecuteAsync(request);
+
+            //return response;
         }
 
-        public static async Task<dynamic> CompleteUpload(string bucketKey, string objectKey, string uploadKey)
+        public static async Task<ForgeCreateFolder> CreateFolder(string projectId, string parentFolderId, string folderName)
         {
-            var token = await TokenManager.GetTwoLeggedToken();
-            string endpoint = $"/buckets/{bucketKey}/objects/{HttpUtility.UrlEncode(objectKey)}/signeds3upload";
-            RestClient client = new RestClient($"https://developer.api.autodesk.com/oss/v2");
-            RestRequest request = new RestRequest(endpoint, Method.Post);
+            await Task.Delay(10000);
+            try
+            {
+                projectId = projectId.StartsWith("b.") ? projectId : $"b.{projectId}";
+                var token = await TokenManager.GetTwoLeggedToken();
 
+                var request = await (AppSettings.GetUriPath(AppSettings.Instance.ProjectsEndpoint) + $"/{projectId}/folders")
+                    .WithOAuthBearerToken(token)
+                    .AllowHttpStatus(HttpStatusCode.TooManyRequests)
+                    .PostJsonAsync(new
+                    {
+                        jsonapi = new { version = "1.0" },
+                        data = new
+                        {
+                            type = "folders",
+                            attributes = new
+                            {
+                                name = folderName,
+                                extension = new
+                                {
+                                    type = "folders:autodesk.bim360:Folder",
+                                    version = "1.0"
+                                }
+                            },
+                            relationships = new
+                            {
+                                parent = new
+                                {
+                                    data = new
+                                    {
+                                        type = "folders",
+                                        id = parentFolderId
+                                    }
+                                }
+                            }
+                        }
+                    });
 
-            request.AddHeader("Authorization", "Bearer " + token);
-            request.AddHeader("Content-Type", "application/json");
+                if (request.StatusCode == 429)
+                {
+                    await Task.Delay(15000);
+                    return await CreateFolder(projectId, parentFolderId, folderName);
+                }
 
-            request.AddJsonBody(new { uploadKey = $"{uploadKey}" });
+                var response = await request.GetJsonAsync<ForgeCreateFolder>();
 
-            var response = await client.ExecuteAsync(request);
+                return response;
+            }
 
-            return response;
+            catch (Exception exception)
+            {
+                Log.Error("Error Creating Folder: " + folderName);
+                Console.WriteLine("Error Creating Folder: " + folderName);
+                throw;
+            }
         }
 
         public static async Task<ForgeFirstVersionResponse> CreateFirstVersion(string projectId, string fileName, string folderId, string objectId)
@@ -651,64 +656,6 @@ namespace Bulk_Uploader_Electron.Utilities
             }
         }
 
-        public static async Task<ForgeCreateFolder> CreateFolder(string projectId, string parentFolderId, string folderName)
-        {
-            await Task.Delay(10000);
-            try
-            {
-                projectId = projectId.StartsWith("b.") ? projectId : $"b.{projectId}";
-                var token = await TokenManager.GetTwoLeggedToken();
-
-                var request = await (AppSettings.GetUriPath(AppSettings.Instance.ProjectsEndpoint) + $"/{projectId}/folders")
-                    .WithOAuthBearerToken(token)
-                    .AllowHttpStatus(HttpStatusCode.TooManyRequests)
-                    .PostJsonAsync(new
-                    {
-                        jsonapi = new { version = "1.0" },
-                        data = new
-                        {
-                            type = "folders",
-                            attributes = new
-                            {
-                                name = folderName,
-                                extension = new
-                                {
-                                    type = "folders:autodesk.bim360:Folder",
-                                    version = "1.0"
-                                }
-                            },
-                            relationships = new
-                            {
-                                parent = new
-                                {
-                                    data = new
-                                    {
-                                        type = "folders",
-                                        id = parentFolderId
-                                    }
-                                }
-                            }
-                        }
-                    });
-
-                if (request.StatusCode == 429)
-                {
-                    await Task.Delay(15000);
-                    return await CreateFolder(projectId, parentFolderId, folderName);
-                }
-
-                var response = await request.GetJsonAsync<ForgeCreateFolder>();
-
-                return response;
-            }
-
-            catch (Exception exception)
-            {
-                Log.Error("Error Creating Folder: " + folderName);
-                Console.WriteLine("Error Creating Folder: " + folderName);
-                throw;
-            }
-        }
 
 
 
@@ -820,6 +767,31 @@ namespace Bulk_Uploader_Electron.Utilities
 
         //    return metadataResponse;
         //}
+
+        //public static async Task<ForgeVersions> GetVersion(string projectId, string version)
+        //{
+        //    projectId = projectId.Substring(0, 2) == "b." ? projectId : "b." + projectId;
+        //    var token = await TokenManager.GetTwoLeggedToken();
+
+        //    string encodedUrn = HttpUtility.UrlEncode(version);
+
+        //    var request =
+        //        await (AppSettings.GetUriPath(AppSettings.Instance.ProjectsEndpoint) + $"/{projectId}/versions/{encodedUrn}")
+        //            .WithOAuthBearerToken(token)
+        //            .AllowHttpStatus(HttpStatusCode.TooManyRequests)
+        //            .GetAsync();
+
+
+        //    if (request.StatusCode == 429)
+        //    {
+
+        //        await Task.Delay(15000);
+        //        return await GetVersion(projectId, version);
+        //    }
+
+        //    return await request.GetJsonAsync<ForgeVersions>();
+        //}
+
         //public static async Task<ForgeMetadataProperties> GetMetaDataProperties(string encodedUrn, string guid)
         //{
         //    var token = await TokenManager.GetTwoLeggedToken();
