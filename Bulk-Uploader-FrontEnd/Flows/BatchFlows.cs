@@ -250,25 +250,25 @@ namespace Bulk_Uploader_Electron.Flows
         //        }
 
         public class AccToDiskData
-    {
-
-        public string OutputDirectory { get; set; }
-        public string StorageObjectId { get; set; }
-        public int StepId { get; set; }
-        public long Size { get; set; }
-        public string RelativePath { get; set; }
-        public string ErrorMessage { get; set; }
-
-        public AccToDiskData(int stepId, string outputDirectory, string storageObjectId, string relativePath, long size)
         {
 
-            OutputDirectory = outputDirectory;
-            StorageObjectId = storageObjectId;
-            RelativePath = relativePath;
-            Size = size;
-            StepId = stepId;
+            public string OutputDirectory { get; set; }
+            public string StorageObjectId { get; set; }
+            public int StepId { get; set; }
+            public long Size { get; set; }
+            public string RelativePath { get; set; }
+            public string ErrorMessage { get; set; }
+
+            public AccToDiskData(int stepId, string outputDirectory, string storageObjectId, string relativePath, long size)
+            {
+
+                OutputDirectory = outputDirectory;
+                StorageObjectId = storageObjectId;
+                RelativePath = relativePath;
+                Size = size;
+                StepId = stepId;
+            }
         }
-    }
 
         private static async Task AccToDisk(string data)
         {
@@ -285,11 +285,11 @@ namespace Bulk_Uploader_Electron.Flows
                     throw ex;
                 }
                 var timeout = args.Size > 1000000000 ? 22 : args.Size > 500000000 ? 11 : args.Size > 100000000 ? 6 : 2;
-                
+
                 var token = await JointTokenManager.GetToken();
                 var signedUrl = await ForgeHelpers.GetDownloadUrl(token, parts[0], parts[1], timeout);
                 var path = Path.Combine(args.OutputDirectory, args.RelativePath!);
-                
+
                 token = await JointTokenManager.GetToken();
                 var stream = await ForgeHelpers.GetDownloadStream(token, args.StorageObjectId);
 
