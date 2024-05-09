@@ -5,11 +5,15 @@ namespace Bulk_Uploader_Electron.Managers
 {
     public static class TwoLeggedTokenManager
     {
+        #region Properties
         private static string TwoLeggedToken { get; set; } = "";
         private static DateTime TwoLeggedTokenExpiration { get; set; }
         private static string? ClientId { get; set; }
         private static string? ClientSecret { get; set; }
+        #endregion
 
+
+        #region Methods
         public static async Task<string> GetTwoLeggedToken()
         {
             if (ClientId != AppSettings.Instance.ClientId || ClientSecret != AppSettings.Instance.ClientSecret)
@@ -24,7 +28,6 @@ namespace Bulk_Uploader_Electron.Managers
             else
                 return await RequestTwoLeggedToken();
         }
-
         private static async Task<string> RequestTwoLeggedToken()
         { 
             var twoLeggedToken = await APSClientHelper.AuthClient.GetTwoLeggedTokenAsync(AppSettings.Instance.ClientId, AppSettings.Instance.ClientSecret, ScopeStringToArray(AppSettings.Instance.ForgeTwoLegScope));
@@ -34,7 +37,6 @@ namespace Bulk_Uploader_Electron.Managers
 
             return TwoLeggedToken;
         }
-
         public static List<Scopes> ScopeStringToArray(string scopeString)
         {
             var scopeStrings = scopeString.Split(' ').ToList();
@@ -59,5 +61,6 @@ namespace Bulk_Uploader_Electron.Managers
 
             return scopes;
         }
+        #endregion
     }
 }
