@@ -5,7 +5,6 @@ using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Bulk_Uploader_Electron.Managers;
-using Bulk_Uploader_Electron.Models.Forge.Bim360Project;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 

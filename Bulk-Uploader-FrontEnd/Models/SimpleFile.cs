@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using Bulk_Uploader_Electron.Models.Forge;
-using Ganss.Excel;
+﻿using Ganss.Excel;
 
 namespace Bulk_Uploader_Electron.Models
 {
@@ -38,5 +35,13 @@ namespace Bulk_Uploader_Electron.Models
 
         [Ignore]
         public List<CustomAttribute> CustomAttributes { get; set; } = new List<CustomAttribute>();
+    }
+
+    public class CustomAttribute
+    {
+        public int id { get; set; }
+        public string type { get; set; }
+        public string name { get; set; }
+        public string value { get; set; }
     }
 }
