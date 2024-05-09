@@ -23,16 +23,8 @@ namespace Ac.Net.Authentication
         private static object _lockObj = new object();
         private static IAuthParamProvider? _paramProvider;
         private static TokenUpdate _tokenUpdate;
-        private static XListener Listener = null;
-        private int _timeOut = 400;
-        
+
         private static string RedirectUrl = "http://localhost:8083/code";
-
-        private void IncTimeout()
-        {
-            lock (lockObject) _timeOut++;
-        }
-
 
         private readonly AuthParameters _parameters;
         private bool _fetching = false;
@@ -83,12 +75,6 @@ namespace Ac.Net.Authentication
             }
         }
 
-        // when no provider is present this is the html that will be send to the default on unsuccessful login
-        public string ErrorHtml { get; set; } = Html.errorHtml;
-
-        // when no provider is present this is the html that will be send to the default browser on successful login
-        public string SuccessHtlm { get; set; } = Html.successHtml;
-
         /// <summary>
         /// Creates an instance of a ThreeLegged Token manager
         /// </summary>
@@ -117,15 +103,7 @@ namespace Ac.Net.Authentication
             }
         }
 
-        public string BuildAuthorizationHeader(string client_id, string client_secret)
-        {
-            string credentials = $"{client_id}:{client_secret}";
-            string base64Credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes(credentials));
-            string authorizationHeader = $"Basic {base64Credentials}";
-
-            return authorizationHeader;
-        }
-
+        /// <inheritdoc/>
         public void Dispose()
         {
             if (OnTokenUpdate != null)
@@ -282,56 +260,14 @@ namespace Ac.Net.Authentication
 
         public string AuthUrl()
         {
-            var authUrl = "https://developer.api.autodesk.com/authentication/v2/authorize"
-                .SetQueryParam("response_type", "code")
-                .SetQueryParam("client_id", _parameters.ClientId)
-                .SetQueryParam("redirect_uri", RedirectUrl)
-                .SetQueryParam("scope", _parameters.Scope);
-
-            return authUrl;
+            return APSClientHelper.AuthClient.Authorize(_parameters.ClientId, Autodesk.Authentication.Model.ResponseType.Code, RedirectUrl, _parameters.Scope);
         }
-
-        // protected void Autenticate()
-        // {
-        //     try
-        //     {
-        //         Debug.WriteLine("Auth request");
-        //         //  var authUrl = "https://developer.api.autodesk.com/authentication/v2/authorize?response_type=code&client_id=GUcR3kgSxu4upat0KJ0AGzvJP9Wzu3wA&redirect_uri=http://localhost:8083/&scope=data:read data:write data:create";
-        //         var authUrl = "https://developer.api.autodesk.com/authentication/v2/authorize"
-        //             .SetQueryParam("response_type", "code")
-        //             .SetQueryParam("client_id", _parameters.ClientId)
-        //             .SetQueryParam("redirect_uri", RedirectUrl)
-        //             .SetQueryParam("scope", _parameters.Scope);
-        //
-        //         StartListening();
-        //         Process.Start(new ProcessStartInfo(authUrl.ToString()) { UseShellExecute = true });
-        //         WaitOnAuthResponse();
-        //     }
-        //     catch
-        //     {
-        //         Debug.WriteLine("Auth Error");
-        //         StopListening();
-        //         SetToken(null);
-        //         Fetching = false;
-        //     }
-        // }
 
         protected virtual async Task<TokenData> RefreshToken(string refreshToken)
         {
-            //   Debug.WriteLine($"Token is {Token.refresh_token}, ci = {_parameters.ClientId} s= {_parameters.Secret}");
-            var tokenRequestResponse = await "https://developer.api.autodesk.com/authentication/v2/token"
-                .WithBasicAuth(_parameters.ClientId, _parameters.Secret)
-                .PostUrlEncodedAsync(new
-            {
-                grant_type = "refresh_token",
-                refresh_token = refreshToken,
-                redirect_uri = RedirectUrl,
-                scope = _parameters.Scope,
-            }).ReceiveJson<TokenResponse>();
-            //   System.Diagnostics.Debug.WriteLine($"Token Refreshed {tokenRequestResponse.refresh_token}");
-            return new TokenData(tokenRequestResponse.access_token, tokenRequestResponse.refresh_token, DateTime.Now.AddSeconds(tokenRequestResponse.expires_in - 30));
-
-            throw new Exception("Token Refresh Invalid");
+            var refreshTokenResponse = await APSClientHelper.AuthClient.GetRefreshTokenAsync(_parameters.ClientId, _parameters.Secret, refreshToken, _parameters.Scope);
+            refreshTokenResponse.ExpiresIn -= 30;
+            return new TokenData(refreshTokenResponse.AccessToken, refreshTokenResponse._RefreshToken, DateTime.Now.AddSeconds(Convert.ToDouble(refreshTokenResponse.ExpiresIn - 30)));
         }
 
         private void FireTokenUpdate(TokenData tokenData)
@@ -349,15 +285,8 @@ namespace Ac.Net.Authentication
                 Debug.WriteLine("Get from code");
                 try
                 {
-                    var tokenResponse = await "https://developer.api.autodesk.com/authentication/v2/token"
-                        .WithHeader("Authorization", BuildAuthorizationHeader(_parameters.ClientId, _parameters.Secret))
-                        .PostUrlEncodedAsync(new
-                        {
-                            grant_type = "authorization_code",
-                            code = tokenRequestCode,
-                            redirect_uri = RedirectUrl
-                        }).ReceiveJson<TokenResponse>();
-                    var tokenData = new TokenData(tokenResponse.access_token, tokenResponse.refresh_token, DateTime.Now.AddSeconds(tokenResponse.expires_in - 30));
+                    var authenticateTokenResponse = await APSClientHelper.AuthClient.GetThreeLeggedTokenAsync(_parameters.ClientId, _parameters.Secret, tokenRequestCode, RedirectUrl);
+                    var tokenData = new TokenData(authenticateTokenResponse.AccessToken, authenticateTokenResponse.RefreshToken, DateTime.Now.AddSeconds(Convert.ToDouble(authenticateTokenResponse.ExpiresIn - 30)));
                     SetToken(tokenData);
                     Fetching = false;
                 }
@@ -370,11 +299,6 @@ namespace Ac.Net.Authentication
             thread.Start();
         }
 
-        private async Task OnTokenRequestCode(string code)
-        {
-            await GetTokenFromRequestCode(code);
-        }
-
         // thread safe way to set token
         private void SetToken(TokenData token)
         {
@@ -382,21 +306,6 @@ namespace Ac.Net.Authentication
             lock (lockObject) _token = token;
             Debug.WriteLine("Refresh = " + _token?.refresh_token ?? "NULL");
             FireTokenUpdate(token);
-        }
-
-        private void WaitOnAuthResponse()
-        {
-            lock (lockObject) _timeOut = 0;
-            while (_timeOut < 100)
-            {
-                Debug.WriteLine("Waiting");
-
-                IncTimeout();
-                Thread.Sleep(500);
-            }
-            Debug.WriteLine("Clear after wait");
-            Listener?.ClearActive();
-            Thread.Sleep(1000);
         }
     }
 }

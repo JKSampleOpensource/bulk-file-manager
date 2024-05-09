@@ -1,7 +1,9 @@
-﻿using IdentityModel;
+﻿using Autodesk.Authentication.Model;
+using IdentityModel;
 using Newtonsoft.Json;
 using Serilog;
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Security.Cryptography;
@@ -21,12 +23,12 @@ namespace Ac.Net.Authentication.Models
         /// <param name="clientId"></param>
         /// <param name="forgeCallback"></param>
         /// <param name="scope"></param>
-        public AuthParameters(string clientId, string forgeCallback, string scope)
-        {
-            ClientId = clientId;
-            ForgeCallback = forgeCallback;
-            Scope = scope;
-        }
+        //public AuthParameters(string clientId, string forgeCallback, string scope)
+        //{
+        //    ClientId = clientId;
+        //    ForgeCallback = forgeCallback;
+        //    Scope = scope;
+        //}
 
         /// <summary>
         /// Default Constuctor
@@ -35,7 +37,7 @@ namespace Ac.Net.Authentication.Models
         {
             ClientId = "";
             ForgeCallback = "";
-            Scope = "";
+            Scope = new List<Scopes>();
             ClientId = "";
 
         }
@@ -54,7 +56,7 @@ namespace Ac.Net.Authentication.Models
             get { return IsImplicit ? "token" : "code"; }
         }
 
-        public string Scope { get; set; }
+        public List<Scopes> Scope { get; set; }
 
         public string Secret { get; set; }
 
@@ -89,7 +91,7 @@ namespace Ac.Net.Authentication.Models
         public bool IsValid()
         {
             if (string.IsNullOrWhiteSpace(ClientId)) throw new NullReferenceException("Client ID is Invalid");
-            if (string.IsNullOrWhiteSpace(Scope)) throw new NullReferenceException("Scope is Invalid");
+            if (Scope.Count == 0) throw new NullReferenceException("Scope is Invalid");
             if (string.IsNullOrWhiteSpace(ForgeCallback)) throw new NullReferenceException("Authentication Callback is Invalid");
             if (IsImplicit && string.IsNullOrWhiteSpace(Secret)) throw new NullReferenceException("Secret is Invalid");
             return true;
@@ -209,7 +211,7 @@ namespace Ac.Net.Authentication.Models
         /// <param name="clientId"></param>
         /// <param name="forgeCallback"></param>
         /// <param name="scope"></param>
-        public PkceAuthParameters(string clientId, string forgeCallback, string scope)
+        public PkceAuthParameters(string clientId, string forgeCallback, List<Scopes> scope)
         {
             ClientId = clientId;
             ForgeCallback = forgeCallback;
@@ -225,7 +227,7 @@ namespace Ac.Net.Authentication.Models
         {
             ClientId = "";
             ForgeCallback = "";
-            Scope = "";
+            Scope = new List<Scopes>();
             ClientId = "";
             CodeChallenge = "";
             CodeVerifier = "";
@@ -248,7 +250,7 @@ namespace Ac.Net.Authentication.Models
             get { return "code"; }
         }
 
-        public string Scope { get; set; }
+        public List<Scopes> Scope { get; set; }
 
         public string State { get; set; } = "";
 
@@ -301,7 +303,7 @@ namespace Ac.Net.Authentication.Models
         public bool IsValid()
         {
             if (string.IsNullOrWhiteSpace(ClientId)) throw new NullReferenceException("Client ID is Invalid");
-            if (string.IsNullOrWhiteSpace(Scope)) throw new NullReferenceException("Scope is Invalid");
+            if (Scope.Count == 0) throw new NullReferenceException("Scope is Invalid");
             if (string.IsNullOrWhiteSpace(ForgeCallback)) throw new NullReferenceException("Authentication Callback is Invalid");
 
             return true;

@@ -9,8 +9,6 @@ namespace Bulk_Uploader_Electron.Utils
     {
         public static APSSettings DefaultSettings { get; private set; } = new APSSettings();
 
-        public string Server { get; set; } = "https://developer.api.autodesk.com";
-
         public static void SetFlurSettings(bool logCalls, bool logErrors, bool enableHttpRetries)
         {
             FlurlHttp.Configure(settings =>
@@ -53,7 +51,7 @@ namespace Bulk_Uploader_Electron.Utils
             Serilog.Log.Verbose($"{callObject.Request.Url} Start");
         }
 
-        private static async System.Threading.Tasks.Task OnError(FlurlCall callObject)
+        private static async Task OnError(FlurlCall callObject)
         {
             var request = callObject.Request;
             var text = "";

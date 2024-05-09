@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Autodesk.Authentication.Model;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -11,7 +12,7 @@ namespace Ac.Net.Authentication.Models
         string AuthCallback { get; set; }
         string RefreshToken { get; set; }
         string ForgeTwoLegScope { get; set; }
-        string ForgeThreeLegScope { get; set; }
+        List<Scopes> ForgeThreeLegScope { get; set; }
 
     }
 
