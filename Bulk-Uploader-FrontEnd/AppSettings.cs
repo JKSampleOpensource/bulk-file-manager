@@ -11,10 +11,9 @@ public class AppSettings : IAuthParamProvider
     public readonly static AppSettings Instance = new();
     public string ClientId { get; set; } = "";
     public string ClientSecret { get; set; } = "";
-    public string AuthCallback { get; set; } = "";
     public string RefreshToken { get; set; } = "";
-    public string ForgeTwoLegScope { get; set; } = "data:read data:write data:create bucket:read";
-    public List<Scopes> ForgeThreeLegScope { get; set; } = new() { Scopes.DataRead, Scopes.DataWrite, Scopes.DataCreate, Scopes.BucketRead};
+    public List<Scopes> ForgeTwoLegScope => new() { Scopes.DataRead, Scopes.DataWrite, Scopes.DataCreate, Scopes.BucketRead};
+    public List<Scopes> ForgeThreeLegScope => new() { Scopes.DataRead, Scopes.DataWrite, Scopes.DataCreate, Scopes.BucketRead};
     public string FileWorkerCount { get; set; } = "10";
     public string FolderWorkerCount { get; set; } = "10";
 

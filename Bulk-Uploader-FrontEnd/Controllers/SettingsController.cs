@@ -101,8 +101,7 @@ public class SettingsController: ControllerBase
     [Route("api/settings/threeLegged/check")]
     public async Task<ActionResult> CheckThreeLegged()
     {
-        var isAuthenticated = ThreeLeggedTokenManager.Instance.IsAuthenticated();
-        return Ok(isAuthenticated);
+        return Ok(ThreeLeggedTokenManager.Instance.IsAuthenticated);
     }
     
     [HttpGet]

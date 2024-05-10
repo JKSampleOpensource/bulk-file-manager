@@ -1,21 +1,7 @@
-﻿using System;
-using System.Threading.Tasks;
+﻿using System.Threading.Tasks;
 
 namespace Ac.Net.Authentication.Models
 {
-    /// <summary>
-    /// Used to get token
-    /// </summary>
-    public interface ITokenProvider
-    {
-        /// <summary>
-        /// Get token
-        /// </summary>
-        /// <returns></returns>
-        Task<string> GetToken();
-    }
-
-
     /// <summary>
     /// Deleglte for when a token is refreshed
     /// </summary>
@@ -26,21 +12,13 @@ namespace Ac.Net.Authentication.Models
     /// <summary>
     ///
     /// </summary>
-    public interface ITokenManager : ITokenProvider
+    public interface ITokenManager
     {
         event TokenUpdate OnTokenUpdate;
 
-        Task<TokenData?> ForceRefresh();
-
-        string GetClientId();
-
-        DateTime GetExpiration();
-
-        string GetRefreshToken();
-
         Task<string> GetToken();
 
-        bool IsAuthenticated();
+        bool IsAuthenticated { get; }
 
         void Logout();
     }

@@ -1,12 +1,8 @@
 ﻿using Ac.Net.Authentication.Models;
-using Flurl;
-using Flurl.Http;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Net;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -19,18 +15,51 @@ namespace Ac.Net.Authentication
     /// </summary>
     public class ThreeLeggedTokenManager : ITokenManager, IDisposable
     {
+        #region Constants
+        private static readonly string RedirectUrl = "http://localhost:8083/code";
+        #endregion
+
+
+        #region Fields
         private static ThreeLeggedTokenManager? _instance;
         private static object _lockObj = new object();
         private static IAuthParamProvider? _paramProvider;
         private static TokenUpdate _tokenUpdate;
-
-        private static string RedirectUrl = "http://localhost:8083/code";
-
         private readonly AuthParameters _parameters;
         private bool _fetching = false;
         private TokenData _token = null;
         private object lockObject = new object();
+        #endregion
 
+
+        #region Events
+        public event TokenUpdate OnTokenUpdate;
+        #endregion
+
+
+        #region Properties
+        private TokenData Token => _token;
+        private bool Fetching
+        {
+            get { return _fetching; }
+            set
+            {
+                lock (lockObject)
+                {
+                    _fetching = value;
+                }
+            }
+        }
+        /// <inheritdoc/>
+        public bool IsAuthenticated => (Token != null && Token.expiresAt > DateTime.Now && !string.IsNullOrEmpty(Token.access_token));
+        #endregion
+
+
+        #region Constructor
+        /// <summary>
+        /// Creates an instance of a ThreeLegged Token manager
+        /// </summary>
+        /// <param name="tokenParameters">Parameters that define the authentication</param>
         public ThreeLeggedTokenManager(AuthParameters tokenParameters)
         {
             if (tokenParameters.IsImplicit) throw new ArgumentException("Must be configure for non-implicit authentication");
@@ -42,9 +71,6 @@ namespace Ac.Net.Authentication
                 this.SetToken(td);
             }
         }
-
-        public event TokenUpdate OnTokenUpdate;
-
         public static ThreeLeggedTokenManager Instance
         {
             get
@@ -74,26 +100,6 @@ namespace Ac.Net.Authentication
                 return _instance;
             }
         }
-
-        /// <summary>
-        /// Creates an instance of a ThreeLegged Token manager
-        /// </summary>
-        /// <param name="tokenParameters">Parameters that define the authentication</param>
-        private bool Fetching
-        {
-            get { return _fetching; }
-            set
-            {
-                lock (lockObject)
-                {
-                    _fetching = value;
-                }
-            }
-        }
-
-        private TokenData Token
-        { get { return _token; } }
-
         public static void InitializeInstance(IAuthParamProvider paramProvider, TokenUpdate tokenUpdated)
         {
             lock (_lockObj)
@@ -102,60 +108,13 @@ namespace Ac.Net.Authentication
                 _tokenUpdate = tokenUpdated;
             }
         }
+        #endregion
 
+
+        #region methods : Primary
         /// <inheritdoc/>
-        public void Dispose()
-        {
-            if (OnTokenUpdate != null)
-            {
-                // clean up so garbage collector will work.
-                foreach (var del in (_instance.OnTokenUpdate?.GetInvocationList()?.ToArray() ?? new List<Delegate>().ToArray()))
-                {
-                    _instance.OnTokenUpdate -= (TokenUpdate)del;
-                }
-            }
-        }
-
-        public async Task<TokenData?> ForceRefresh()
-        {
-            try
-            {
-                //   Debug.WriteLine($"Token is {Token.refresh_token}");
-                var refreshedToken = await RefreshToken(Token.refresh_token);
-                if (refreshedToken != null)
-                {
-                    SetToken(refreshedToken);
-                }
-                return refreshedToken;
-            }
-            catch (Exception ex)
-            {
-                return null;
-            }
-        }
-
-        /// <summary>
-        ///
-        /// </summary>
-        /// <returns></returns>
-        public string GetClientId()
-        {
-            return this._parameters.ClientId;
-        }
-
-        /// <summary>
-        /// Returns the expiration date of token
-        /// </summary>
-        /// <returns></returns>
-        public DateTime GetExpiration()
-        {
-            return this.Token == null ? DateTime.MinValue : this.Token.expiresAt;
-        }
-
-        public string GetRefreshToken()
-        {
-            return (_token == null ? "" : _token.refresh_token);
-        }
+        public string AuthUrl()
+            => APSClientHelper.AuthClient.Authorize(_parameters.ClientId, Autodesk.Authentication.Model.ResponseType.Code, RedirectUrl, _parameters.Scope);
 
         /// <summary>
         /// Requests a token.  If token is not valid it will try to refresh token if refresh fails it will try to authenticate
@@ -174,10 +133,8 @@ namespace Ac.Net.Authentication
                     throw new TimeoutException("Token request timed out");
                 }
             }
-            if (IsAuthenticated())
-            {
-                return Token.access_token;
-            }
+            if (IsAuthenticated) return Token.access_token;
+
             // if not then we need a new token
             // first check for refresh...
             if ((Token != null && !string.IsNullOrEmpty(Token.refresh_token)))
@@ -228,56 +185,7 @@ namespace Ac.Net.Authentication
             }
         }
 
-        public bool IsAuthenticated()
-        {
-            return (Token != null && Token.expiresAt > DateTime.Now && !string.IsNullOrEmpty(Token.access_token));
-        }
-
-        public void Logout()
-        {
-            SetToken(null);
-        }
-
-        // public void StartListening()
-        // {
-        //     if (!HttpListener.IsSupported)
-        //     {
-        //         Console.WriteLine("Windows XP SP2 or Server 2003 is required to use the HttpListener class.");
-        //         return;
-        //     }
-        //
-        //     if (Listener == null)
-        //     {
-        //         Listener = new XListener(_parameters.ForgeCallback);
-        //     }
-        //     Listener.StartListen(OnTokenRequestCode, OnError);
-        // }
-        //
-        // public void StopListening()
-        // {
-        //     lock (lockObject) _timeOut = 10000;
-        // }
-
-        public string AuthUrl()
-        {
-            return APSClientHelper.AuthClient.Authorize(_parameters.ClientId, Autodesk.Authentication.Model.ResponseType.Code, RedirectUrl, _parameters.Scope);
-        }
-
-        protected virtual async Task<TokenData> RefreshToken(string refreshToken)
-        {
-            var refreshTokenResponse = await APSClientHelper.AuthClient.GetRefreshTokenAsync(_parameters.ClientId, _parameters.Secret, refreshToken, _parameters.Scope);
-            refreshTokenResponse.ExpiresIn -= 30;
-            return new TokenData(refreshTokenResponse.AccessToken, refreshTokenResponse._RefreshToken, DateTime.Now.AddSeconds(Convert.ToDouble(refreshTokenResponse.ExpiresIn - 30)));
-        }
-
-        private void FireTokenUpdate(TokenData tokenData)
-        {
-            if (OnTokenUpdate != null)
-            {
-                OnTokenUpdate(this, tokenData);
-            }
-        }
-
+        /// <inheritdoc/>
         public async Task GetTokenFromRequestCode(string tokenRequestCode)
         {
             var thread = new Thread(async (data) =>
@@ -299,13 +207,43 @@ namespace Ac.Net.Authentication
             thread.Start();
         }
 
+        /// <inheritdoc/>
+        protected virtual async Task<TokenData> RefreshToken(string refreshToken)
+        {
+            var refreshTokenResponse = await APSClientHelper.AuthClient.GetRefreshTokenAsync(_parameters.ClientId, _parameters.Secret, refreshToken, _parameters.Scope);
+            refreshTokenResponse.ExpiresIn -= 30;
+            return new TokenData(refreshTokenResponse.AccessToken, refreshTokenResponse._RefreshToken, DateTime.Now.AddSeconds(Convert.ToDouble(refreshTokenResponse.ExpiresIn - 30)));
+        }
+
+        /// <inheritdoc/>
+        public void Logout()
+            => SetToken(null);
+        #endregion
+
+
+        #region methods : secondary
         // thread safe way to set token
         private void SetToken(TokenData token)
         {
             Debug.WriteLine("Old = " + _token?.refresh_token ?? "NULL");
             lock (lockObject) _token = token;
             Debug.WriteLine("Refresh = " + _token?.refresh_token ?? "NULL");
-            FireTokenUpdate(token);
+            OnTokenUpdate?.Invoke(this, token);
         }
+
+        /// <inheritdoc/>
+        public void Dispose()
+        {
+            if (OnTokenUpdate != null)
+            {
+                // clean up so garbage collector will work.
+                foreach (var del in (_instance.OnTokenUpdate?.GetInvocationList()?.ToArray() ?? new List<Delegate>().ToArray()))
+                {
+                    _instance.OnTokenUpdate -= (TokenUpdate)del;
+                }
+            }
+        }
+        #endregion
+
     }
 }

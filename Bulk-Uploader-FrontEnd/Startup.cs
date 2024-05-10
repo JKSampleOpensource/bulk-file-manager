@@ -2,21 +2,19 @@ using Ac.Net.Authentication;
 using Ac.Net.Authentication.Models;
 using ApsSettings.Data;
 using ApsSettings.Data.DataUtils;
+using ApsSettings.Data.Models;
 using Bulk_Uploader_Electron.ClientApp.src.Utilities;
+using Bulk_Uploader_Electron.Jobs;
 using Bulk_Uploader_Electron.Utils;
 using Hangfire;
-using Hangfire.Storage.SQLite;
+using Hangfire.MemoryStorage;
+using mass_upload_via_s3_csharp;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using PluginBase;
 using System.Reflection;
-using ApsSettings.Data.Models;
-using Bulk_Uploader_Electron.Jobs;
-using Hangfire.MemoryStorage;
-using mass_upload_via_s3_csharp;
 
 namespace Bulk_Uploader_Electron
 {
@@ -109,11 +107,10 @@ namespace Bulk_Uploader_Electron
 
             AppSettings.Instance.ClientId = clientId.Value;
             AppSettings.Instance.ClientSecret = clientSecret.Value;
-            AppSettings.Instance.AuthCallback = authCallback.Value;
             AppSettings.Instance.RefreshToken = refreshToken.Value;
 
-           // services.AddHangfire(configuration => configuration.UseSQLiteStorage($"{_databaseName}.db"));
-           services.AddHangfire(config => config.UseMemoryStorage());
+            // services.AddHangfire(configuration => configuration.UseSQLiteStorage($"{_databaseName}.db"));
+            services.AddHangfire(config => config.UseMemoryStorage());
 
             services.AddHangfireServer(options =>
             {
@@ -149,7 +146,7 @@ namespace Bulk_Uploader_Electron
                 options.Queues = new[] { "default" };
                 options.WorkerCount = 10;
             });
-            
+
             services.AddHangfireServer(options =>
             {
                 options.Queues = new[] { "process-file-download" };
@@ -161,17 +158,17 @@ namespace Bulk_Uploader_Electron
                 options.Queues = new[] { "kill-finished" };
                 options.WorkerCount = 1;
             });
-            
+
             services.AddSingleton<ISettingsProvider>((sp) => new Utils.SettingsProvider(sp));
 
             ThreeLeggedTokenManager.InitializeInstance(AppSettings.Instance, OnTokenRefresh);
-            TwoLeggedManager.InitializeInstance(AppSettings.Instance, null);
+            //TwoLeggedManager.InitializeInstance(AppSettings.Instance, null);
 
             APSSettings.SetFlurSettings(true, true, true);
             _serviceProvider = services.BuildServiceProvider();
             services.AddSingleton<IServiceProvider>(_serviceProvider);
-            
-            
+
+
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -195,7 +192,7 @@ namespace Bulk_Uploader_Electron
             app.UseRouting();
 
             app.UseHangfireDashboard();
-            
+
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapControllers();
@@ -205,27 +202,27 @@ namespace Bulk_Uploader_Electron
             {
                 spa.Options.SourcePath = "ClientApp";
             });
-            
+
             // check that there aren't existing files which need to be downloaded that didn't finish last application run
             var tempContext = _serviceProvider.GetService<DataContext>();
             var reDownloadFiles = tempContext.BulkDownloadFiles
                 .Where(x => x.Status == DownloadFileStatus.Pending || x.Status == DownloadFileStatus.InProgress)
-                .Select(x=>x.Id)
+                .Select(x => x.Id)
                 .ToList();
             foreach (var fileId in reDownloadFiles)
             {
                 BackgroundJob.Enqueue<DownloaderHangfireJobs>(y => y.ProcessFileDownload(fileId));
             }
-            
+
             var reUploadFiles = tempContext.BulkUploadFiles
                 .Where(x => x.Status == JobFileStatus.Pending)
-                .Select(x=>new {x.Id, x.BulkUploadId})
+                .Select(x => new { x.Id, x.BulkUploadId })
                 .ToList();
             foreach (var fileId in reUploadFiles)
             {
                 BackgroundJob.Enqueue<HangfireJobs>(y => y.ProcessFile(fileId.BulkUploadId, fileId.Id));
             }
-            
+
             var sp = app.ApplicationServices.GetService<IServiceProvider>();
             foreach (var plugin in PluginManager.Instance.Plugins)
             {
